@@ -352,7 +352,7 @@ fun MusicAiScreen() {
                                     onClick = {
                                         Thread {
                                             try {
-                                                val request = Request.Builder().url("${BACKEND_URL.trimEnd('/')}/health").get().build()
+                                                val request = Request.Builder().url("${backendUrl.trim().trimEnd('/')}/health").get().build()
                                                 OkHttpClient().newCall(request).execute().use { response ->
                                                     val ok = response.isSuccessful
                                                     activity.runOnUiThread {
