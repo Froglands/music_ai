@@ -1,4 +1,4 @@
-package com.nadaai.app
+package com.music_ai.app
 
 import android.content.ContentValues
 import android.media.MediaPlayer
@@ -33,20 +33,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-// Replace this with the deployed HTTPS backend URL before using song generation.
-private const val BACKEND_URL = "https://YOUR-BACKEND.example"
+// Backend URL is configured and saved from the Settings screen.
 
 private enum class AppPage { STUDIO, EDIT, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NadaAiScreen() }
+        setContent { MusicAiScreen() }
     }
 }
 
 @Composable
-fun NadaAiScreen() {
+fun MusicAiScreen() {
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val bg = Color(0xFF101018)
@@ -67,13 +66,16 @@ fun NadaAiScreen() {
     var audioBytes by remember { mutableStateOf<ByteArray?>(null) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
+    var backendUrl by remember {
+        mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "") ?: "")
+    }
 
     val genres = listOf("Dangdut Koplo", "Dangdut", "Pop", "Rock", "Ska", "Rap", "Jazz", "Reggae", "EDM", "Akustik")
 
     fun generateSong() {
         if (busy) return
-        if (BACKEND_URL.contains("YOUR-BACKEND")) {
-            status = "Backend belum diatur. Tambahkan URL server HTTPS di MainActivity.kt."
+        if (backendUrl.isBlank()) {
+            status = "Masukkan URL backend HTTPS di Pengaturan terlebih dahulu."
             page = AppPage.SETTINGS
             return
         }
@@ -99,7 +101,7 @@ fun NadaAiScreen() {
                     .readTimeout(10, TimeUnit.MINUTES)
                     .build()
                 val request = Request.Builder()
-                    .url("${BACKEND_URL.trimEnd('/')}/api/generate")
+                    .url("${backendUrl.trim().trimEnd('/')}/api/generate")
                     .post(json.toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 client.newCall(request).execute().use { response ->
@@ -326,12 +328,25 @@ fun NadaAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
                                 Text(
-                                    if (BACKEND_URL.contains("YOUR-BACKEND")) "Belum dikonfigurasi" else BACKEND_URL,
-                                    color = if (BACKEND_URL.contains("YOUR-BACKEND")) Color(0xFFFFB74D) else Color.LightGray
+                                    if (backendUrl.isBlank()) "Belum dikonfigurasi" else backendUrl,
+                                    color = if (backendUrl.isBlank()) Color(0xFFFFB74D) else Color.LightGray
                                 )
                                 Text(
-                                    "URL backend diatur saat build aplikasi. API key ElevenLabs harus disimpan sebagai environment variable di server, bukan di aplikasi.",
+                                    "Masukkan URL HTTPS backend yang sudah online. API key ElevenLabs wajib disimpan sebagai environment variable di server, bukan di aplikasi.",
                                     color = Color.LightGray, fontSize = 12.sp
+                                )
+                                OutlinedTextField(
+                                    value = backendUrl,
+                                    onValueChange = { value ->
+                                        backendUrl = value.trim()
+                                        context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+                                            .edit().putString("backend_url", value.trim()).apply()
+                                        backendReachable = null
+                                    },
+                                    label = { Text("URL backend HTTPS") },
+                                    placeholder = { Text("https://nama-server.onrender.com") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
                                 )
                                 OutlinedButton(
                                     onClick = {
@@ -353,7 +368,7 @@ fun NadaAiScreen() {
                                             }
                                         }.start()
                                     },
-                                    enabled = !BACKEND_URL.contains("YOUR-BACKEND")
+                                    enabled = backendUrl.startsWith("https://")
                                 ) { Text("Tes koneksi server") }
                                 backendReachable?.let { reachable ->
                                     Text(
@@ -366,7 +381,7 @@ fun NadaAiScreen() {
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
-                                Text("Versi 0.2.0 • Android native • Powered by ElevenLabs", color = Color.LightGray, fontSize = 12.sp)
+                                Text("Versi 0.2.1 • Android native • Powered by ElevenLabs", color = Color.LightGray, fontSize = 12.sp)
                             }
                         }
                     }
