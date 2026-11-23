@@ -12,14 +12,10 @@ Native Android app (Kotlin + Jetpack Compose) with a Node.js backend for ElevenL
 - Create a song from a title, lyrics, genre, vocal direction, BPM direction, and mood.
 - Edit the title and lyrics after generation, then regenerate the track.
 - Preview generated MP3 audio and save it to `Music/MusicAI`.
-- Settings page shows the backend configuration and provides a health check.
+- Settings page lets you enter and save the backend HTTPS URL, then test its health.
 
 ## Important: configure the backend before generating songs
-The Android app currently contains a placeholder backend URL in:
-
-`android/app/src/main/java/com/music_ai/app/MainActivity.kt`
-
-Replace `https://YOUR-BACKEND.example` with the deployed HTTPS backend URL (without a trailing slash), then commit the change.
+The Android app stores the backend HTTPS URL locally from **Pengaturan**. Enter the deployed service URL in the app; no APK rebuild is needed when the URL changes.
 
 Deploy the `backend/` directory as a Node.js web service. On Render, use:
 - Root directory: `backend`
@@ -30,6 +26,9 @@ Deploy the `backend/` directory as a Node.js web service. On Render, use:
 Set `ELEVENLABS_API_KEY` as a secret environment variable in the hosting provider. Do not put the key in Android code, Git, screenshots, or this README. `ALLOWED_ORIGIN=*` is suitable only for initial testing; restrict it before public release.
 
 Open `https://YOUR-BACKEND/health`. A healthy service returns JSON with `ok: true`.
+
+## Android package
+The application ID and Kotlin namespace are `com.music_ai.app`. The launcher name is `MusicAI`.
 
 ## Build the APK with GitHub Actions
 1. Open the repository's **Actions** tab.
