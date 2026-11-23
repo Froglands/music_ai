@@ -328,10 +328,6 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
                                 Text(
-                                    if (backendUrl.isBlank()) "Belum dikonfigurasi" else backendUrl,
-                                    color = if (backendUrl.isBlank()) Color(0xFFFFB74D) else Color.LightGray
-                                )
-                                Text(
                                     "Masukkan URL HTTPS backend yang sudah online. API key ElevenLabs wajib disimpan sebagai environment variable di server, bukan di aplikasi.",
                                     color = Color.LightGray, fontSize = 12.sp
                                 )
