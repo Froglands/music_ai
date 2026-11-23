@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace = "com.nadaai.app"
+    namespace = "com.music_ai.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nadaai.app"
+        applicationId = "com.music_ai.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.1"
     }
 
     buildFeatures { compose = true }
