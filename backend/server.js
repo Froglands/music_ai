@@ -15,7 +15,7 @@ app.use(express.json({ limit: "80kb" }));
 app.use(rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "nadaai-backend" });
+  res.json({ ok: true, service: "musicai-backend" });
 });
 
 function cleanString(value, max) {
@@ -123,4 +123,4 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
-app.listen(port, () => console.log(`NadaAI backend listening on ${port}`));
+app.listen(port, () => console.log(`MusicAI backend listening on ${port}`));
