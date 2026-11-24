@@ -138,6 +138,10 @@ fun MusicAiScreen() {
     var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
+    var developerCode by remember { mutableStateOf("") }
+    var developerUnlocked by remember { mutableStateOf(false) }
+    var developerVerifying by remember { mutableStateOf(false) }
+    var developerMessage by remember { mutableStateOf("") }
     var backendUrl by remember {
         mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "") ?: "")
     }
@@ -624,8 +628,40 @@ fun MusicAiScreen() {
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
+                                Text("Mode khusus pengembang • ryuzee_project", color = Color(0xFFD6C7FF), fontSize = 12.sp)
+                                if (!developerUnlocked) {
+                                    OutlinedTextField(value = developerCode, onValueChange = { developerCode = it }, label = { Text("Kode akses pengembang") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                    OutlinedButton(onClick = {
+                                        developerVerifying = true
+                                        Thread {
+                                            try {
+                                                val body = JSONObject().put("code", developerCode).toString().toRequestBody("application/json".toMediaType())
+                                                val req = Request.Builder().url("${backendUrl.trim().trimEnd('/')}/api/dev/verify").post(body).build()
+                                                OkHttpClient().newCall(req).execute().use { response ->
+                                                    val ok = response.isSuccessful && JSONObject(response.body?.string().orEmpty()).optBoolean("authorized")
+                                                    activity.runOnUiThread {
+                                                        developerUnlocked = ok
+                                                        developerMessage = if (ok) "Akses pengembang dibuka." else "Kode salah atau kode pengembang belum diatur di server."
+                                                        developerVerifying = false
+                                                    }
+                                                }
+                                            } catch (_: Exception) {
+                                                activity.runOnUiThread { developerMessage = "Gagal memverifikasi. Pastikan URL server benar."; developerVerifying = false }
+                                            }
+                                        }.start()
+                                    }, enabled = backendUrl.startsWith("https://") && developerCode.isNotBlank() && !developerVerifying) {
+                                        Text(if (developerVerifying) "Memeriksa..." else "Buka mode pengembang")
+                                    }
+                                    if (developerMessage.isNotBlank()) Text(developerMessage, color = Color.LightGray, fontSize = 12.sp)
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Akses pengembang aktif", color = Color(0xFF81C784), modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { developerUnlocked = false; developerCode = ""; developerMessage = "" }) { Text("Kunci") }
+                                    }
+                                }
+                                if (developerUnlocked) {
                                 Text(
-                                    "Masukkan URL HTTPS backend yang sudah online. API key Apiframe disimpan sebagai environment variable di server, bukan di aplikasi.",
+                                    "Masukkan URL HTTPS backend yang sudah online. API key MusicAPI disimpan sebagai environment variable di server, bukan di aplikasi.",
                                     color = Color.LightGray, fontSize = 12.sp
                                 )
                                 OutlinedTextField(
@@ -668,6 +704,7 @@ fun MusicAiScreen() {
                                         if (reachable) "Server dapat dihubungi." else "Koneksi server gagal.",
                                         color = if (reachable) Color(0xFF81C784) else Color(0xFFEF9A9A)
                                     )
+                                }
                                 }
                             }
                         }
