@@ -471,7 +471,7 @@ fun MusicAiScreen() {
                             value = lyrics, onValueChange = { lyrics = it },
                             label = { Text("Edit lirik") }, modifier = Modifier.fillMaxWidth().height(260.dp)
                         )
-                        Text("Genre: $genre • Vokal: ${if (vocal == "female") "Wanita" else "Pria"}")
+                        Text("Genre: $genre • Vokal: ${when(vocal) { "female" -> "Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
                         Text("Tempo: ${bpm.toInt()} BPM")
                         Button(
                             onClick = { generateSong() },
@@ -490,7 +490,12 @@ fun MusicAiScreen() {
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = { selectTrack(index, true) }
                             ) {
-                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(Modifier.fillMaxWidth()) {
+                                    if (selectedTrackIndex == index && track.imageUrl != null) {
+                                        AsyncImage(model = track.imageUrl, contentDescription = null, modifier = Modifier.matchParentSize().blur(22.dp), contentScale = ContentScale.Crop)
+                                        Box(Modifier.matchParentSize().background(Color(0xAA171321)))
+                                    }
+                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     if (track.imageUrl != null) {
                                         AsyncImage(model = track.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.size(68.dp), contentScale = ContentScale.Crop)
                                     } else {
@@ -504,7 +509,8 @@ fun MusicAiScreen() {
                                         Text(track.durationSeconds?.let { formatTime((it * 1000).toInt()) } ?: "Suno track", color = Color.LightGray, fontSize = 11.sp)
                                     }
                                     if (selectedTrackIndex == index) Icon(Icons.Default.MusicNote, null, tint = accent)
-                                    else TextButton(onClick = { selectTrack(index, false) }) { Text("Pilih") }
+                                    else TextButton(onClick = { selectTrack(index, true) }) { Text("Putar") }
+                                    }
                                 }
                             }
                         }
