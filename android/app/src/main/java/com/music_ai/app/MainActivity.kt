@@ -81,6 +81,7 @@ fun MusicAiScreen() {
     var bpm by remember { mutableFloatStateOf(110f) }
     var durationSeconds by remember { mutableIntStateOf(120) }
     var mood by remember { mutableStateOf("Enerjik dan emosional") }
+    var inputMode by remember { mutableStateOf("lyrics") }
     var selectedMoods by remember { mutableStateOf(setOf("Emosional", "Sedikit sedih")) }
     var customMood by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -140,6 +141,7 @@ fun MusicAiScreen() {
                 val json = JSONObject().apply {
                     put("title", title)
                     put("lyrics", lyrics)
+                    put("inputMode", inputMode)
                     put("genre", genre)
                     put("vocal", vocal)
                     put("instrumental", vocal == "instrumental")
@@ -368,11 +370,16 @@ fun MusicAiScreen() {
                         Text("Buat lagu impianmu", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         OutlinedTextField(
                             value = title, onValueChange = { title = it },
-                            label = { Text("Judul lagu") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                            label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
                         )
+                        Text("Mode pembuatan", fontWeight = FontWeight.SemiBold)
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            SegmentedButton(selected = inputMode == "lyrics", onClick = { inputMode = "lyrics" }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("Lirik sendiri") }
+                            SegmentedButton(selected = inputMode == "prompt", onClick = { inputMode = "prompt" }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("Dari ide / prompt") }
+                        }
                         OutlinedTextField(
                             value = lyrics, onValueChange = { lyrics = it },
-                            label = { Text("Lirik lagu") },
+                            label = { Text(if (inputMode == "lyrics") "Lirik lagu" else "Ide / prompt lagu") },
                             modifier = Modifier.fillMaxWidth().height(240.dp),
                             placeholder = { Text("[Verse 1]\nTulis lirik di sini...") }
                         )
@@ -394,6 +401,12 @@ fun MusicAiScreen() {
                             }
                         }
 
+                        Text("Vokal", fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("male" to "Pria", "female" to "Wanita", "instrumental" to "Instrumen").forEach { (value, label) ->
+                                FilterChip(selected = vocal == value, onClick = { vocal = value }, label = { Text(label) })
+                            }
+                        }
                         Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 "Suno akan membuat lagu dengan vokal sesuai pilihan pria atau wanita dan lirik yang kamu masukkan.",
@@ -437,7 +450,7 @@ fun MusicAiScreen() {
 
                         Button(
                             onClick = { generateSong() },
-                            enabled = !busy && lyrics.isNotBlank(),
+                            enabled = !busy && (inputMode == "prompt" || lyrics.isNotBlank()),
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp)
                         ) {
