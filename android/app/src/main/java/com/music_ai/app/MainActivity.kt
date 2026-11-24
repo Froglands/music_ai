@@ -152,7 +152,12 @@ fun MusicAiScreen() {
     var developerVerifying by remember { mutableStateOf(false) }
     var developerMessage by remember { mutableStateOf("") }
     var backendUrl by remember {
-        mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "https://music-ai-valve7.vercel.app") ?: "https://music-ai-valve7.vercel.app")
+        val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+        val savedUrl = prefs.getString("backend_url", null)
+        val defaultUrl = "https://music-ai-git-main-valve7.vercel.app"
+        val resolvedUrl = if (savedUrl.isNullOrBlank() || savedUrl == "https://music-ai-valve7.vercel.app") defaultUrl else savedUrl
+        if (resolvedUrl != savedUrl) prefs.edit().putString("backend_url", resolvedUrl).apply()
+        mutableStateOf(resolvedUrl)
     }
 
     LaunchedEffect(title, lyrics) {
