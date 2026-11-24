@@ -9,7 +9,7 @@ const apiKey = process.env.APIFRAME_API_KEY;
 app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "80kb" }));
-app.use(rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false }));
+const generationLimiter = rateLimit({ windowMs: 60_000, limit: 3, standardHeaders: "draft-7", legacyHeaders: false });
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "musicai-backend", provider: "apiframe-suno" });
@@ -19,7 +19,7 @@ function cleanString(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate", generationLimiter, async (req, res) => {
   if (!apiKey) return res.status(503).json({ error: "Backend belum dikonfigurasi: APIFRAME_API_KEY belum diatur." });
 
   const title = cleanString(req.body?.title, 80) || "MusicAI";
