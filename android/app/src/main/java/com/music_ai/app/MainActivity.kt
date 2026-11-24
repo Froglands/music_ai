@@ -376,7 +376,7 @@ fun MusicAiScreen() {
 
                         Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Mode sementara: musik instrumental tanpa vokal. Lirik digunakan sebagai inspirasi tema musik.",
+                                "Suno akan membuat lagu dengan vokal sesuai pilihan pria atau wanita dan lirik yang kamu masukkan.",
                                 color = Color.LightGray,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(12.dp)
@@ -468,7 +468,13 @@ fun MusicAiScreen() {
                                 onClick = { selectTrack(index, false) }
                             ) {
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    AsyncImage(model = track.imageUrl, contentDescription = "Cover ${track.title}", modifier = Modifier.size(68.dp), contentScale = ContentScale.Crop)
+                                    if (track.imageUrl != null) {
+                                        AsyncImage(model = track.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.size(68.dp), contentScale = ContentScale.Crop)
+                                    } else {
+                                        Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(68.dp)) {
+                                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(32.dp)) }
+                                        }
+                                    }
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text("HASIL ${index + 1}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -508,7 +514,7 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Masukkan URL HTTPS backend yang sudah online. API key Stability AI disimpan sebagai environment variable di server, bukan di aplikasi.",
+                                    "Masukkan URL HTTPS backend yang sudah online. API key Apiframe disimpan sebagai environment variable di server, bukan di aplikasi.",
                                     color = Color.LightGray, fontSize = 12.sp
                                 )
                                 OutlinedTextField(
