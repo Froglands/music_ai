@@ -114,8 +114,8 @@ fun MusicAiScreen() {
     val accent = Color(0xFF9B7BFF)
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
-    var title by remember { mutableStateOf("") }
-    var lyrics by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE).getString("title", "") ?: "") }
+    var lyrics by remember { mutableStateOf(context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE).getString("lyrics", "") ?: "") }
     var selectedGenres by remember { mutableStateOf(setOf("Dangdut Koplo")) }
     var customGenre by remember { mutableStateOf("") }
     var showGenreDialog by remember { mutableStateOf(false) }
@@ -144,6 +144,11 @@ fun MusicAiScreen() {
     var developerMessage by remember { mutableStateOf("") }
     var backendUrl by remember {
         mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "https://music-ai-valve7.vercel.app") ?: "https://music-ai-valve7.vercel.app")
+    }
+
+    LaunchedEffect(title, lyrics) {
+        context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE)
+            .edit().putString("title", title).putString("lyrics", lyrics).apply()
     }
 
     val importAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -475,13 +480,13 @@ fun MusicAiScreen() {
 
                         Text("Vokal", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("male" to "Pria", "female" to "Wanita", "instrumental" to "Instrumen").forEach { (value, label) ->
+                            listOf("male" to "Pria", "female" to "Wanita", "duet" to "Duet", "instrumental" to "Instrumen").forEach { (value, label) ->
                                 FilterChip(selected = vocal == value, onClick = { vocal = value }, label = { Text(label) })
                             }
                         }
                         Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Suno akan membuat lagu dengan vokal sesuai pilihan pria atau wanita dan lirik yang kamu masukkan.",
+                                "Pilih Pria, Wanita, Duet Pria + Wanita, atau Instrumen. Mode duet mengarahkan AI membuat vokal bergantian dan harmoni bersama.",
                                 color = Color.LightGray,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(12.dp)
@@ -506,7 +511,7 @@ fun MusicAiScreen() {
                             DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
                                 listOf(60, 120, 180, 240, 300, 360).forEach { seconds ->
                                     DropdownMenuItem(
-                                        text = { Text(if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
+                                        text = { Text(if (seconds == 360) "Maksimal AI • 6 menit" else if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
                                         onClick = { durationSeconds = seconds; durationExpanded = false }
                                     )
                                 }
@@ -723,7 +728,7 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
                                 Text("Versi 0.5.0 • Android native", color = Color.LightGray, fontSize = 12.sp)
-                                Text("MusicAI adalah studio musik berbasis AI untuk membuat lagu dari ide atau lirik, memilih genre, mood, tempo, dan vokal pria atau wanita. Hasil dapat diputar, diedit, diunduh, dan tersimpan di riwayat perangkat.", color = Color.LightGray, fontSize = 13.sp)
+                                Text("MusicAI adalah studio musik AI untuk membuat lagu dari ide atau lirik, mengatur genre, mood, tempo, durasi, dan vokal pria, wanita, atau duet. Draft otomatis tersimpan dan hasil generasi masuk ke riwayat perangkat.", color = Color.LightGray, fontSize = 13.sp)
                                 Text("Dikembangkan oleh ryuzee_project", color = Color(0xFFD6C7FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
