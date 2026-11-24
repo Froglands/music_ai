@@ -90,7 +90,14 @@ app.get("/api/job/:id", async (req, res) => {
       status: payload.status,
       progress: payload.progress ?? null,
       error: payload.error || null,
-      tracks: payload.result?.tracks || []
+      tracks: (payload.result?.tracks || []).map(track => ({
+        id: track.id || null,
+        title: track.title || "MusicAI",
+        audioUrl: track.audioUrl || null,
+        imageUrl: track.imageUrl || null,
+        duration: track.duration || null,
+        tags: track.tags || null
+      }))
     });
   } catch (error) {
     console.error("Apiframe job check failed:", error);
