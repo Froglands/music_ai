@@ -116,22 +116,24 @@ private fun apiKeySecret(context: android.content.Context): javax.crypto.SecretK
     return generator.generateKey()
 }
 
-private fun saveDeveloperApiKey(context: android.content.Context, value: String) {
+private fun saveDeveloperApiKey(context: android.content.Context, value: String, provider: String = "musicapi") {
     val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+    val prefKey = if (provider == "lyria") "lyria_api_key_encrypted" else "provider_api_key_encrypted"
     if (value.isBlank()) {
-        prefs.edit().remove("provider_api_key_encrypted").apply()
+        prefs.edit().remove(prefKey).apply()
         return
     }
     val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, apiKeySecret(context))
     val encrypted = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-    prefs.edit().putString("provider_api_key_encrypted", android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)).apply()
+    prefs.edit().putString(prefKey, android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)).apply()
 }
 
-private fun loadDeveloperApiKey(context: android.content.Context): String {
+private fun loadDeveloperApiKey(context: android.content.Context, provider: String = "musicapi"): String {
     return runCatching {
+        val prefKey = if (provider == "lyria") "lyria_api_key_encrypted" else "provider_api_key_encrypted"
         val encoded = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
-            .getString("provider_api_key_encrypted", null) ?: return ""
+            .getString(prefKey, null) ?: return ""
         val bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
         val iv = bytes.copyOfRange(0, 12)
         val payload = bytes.copyOfRange(12, bytes.size)
@@ -267,13 +269,16 @@ fun MusicAiScreen() {
             status = "Lirik minimal 10 karakter."
             return
         }
+        val useLyria = selectedProvider == "lyria"
         val apiKeyOverride = if (developerUnlocked) developerApiKey.trim() else ""
-        val devCodeForRequest = if (apiKeyOverride.isNotBlank()) developerCode else ""
+        val lyriaKeyOverride = if (developerUnlocked) developerLyriaApiKey.trim() else ""
+        val devCodeForRequest = if (apiKeyOverride.isNotBlank() || lyriaKeyOverride.isNotBlank()) developerCode else ""
         busy = true
         status = "Mengirim permintaan ke server..."
         Thread {
             try {
                 val json = JSONObject().apply {
+                    put("provider", if (useLyria) "lyria" else "musicapi")
                     put("title", title.trim())
                     put("lyrics", lyrics)
                     put("inputMode", "auto")
@@ -292,48 +297,89 @@ fun MusicAiScreen() {
                 val request = Request.Builder()
                     .url("${backendUrl.trim().trimEnd('/')}/api/generate")
                     .post(json.toString().toRequestBody("application/json".toMediaType()))
-                    .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
-                    .build()
-                val jobId = client.newCall(request).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        val message = try { JSONObject(body).optString("error", "Server error ${response.code}") } catch (_: Exception) { "Server error ${response.code}" }
-                        throw IllegalStateException(message)
+                    .apply {
+                        if (useLyria && lyriaKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-Lyria-API-Key", lyriaKeyOverride)
+                        else if (!useLyria && apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride)
                     }
-                    JSONObject(body).optString("jobId").takeIf { it.isNotBlank() }
-                        ?: throw IllegalStateException("Server tidak mengembalikan ID generasi.")
-                }
-
-                var completedTracks: org.json.JSONArray? = null
-                var lastStatus = "QUEUED"
-                var attempts = 0
-                while (completedTracks == null && attempts < 90) {
-                    attempts++
-                    Thread.sleep(5_000)
-                    val statusRequest = Request.Builder()
-                        .url("${backendUrl.trim().trimEnd('/')}/api/job/${jobId}")
-                        .get()
-                        .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
-                        .build()
-                    client.newCall(statusRequest).execute().use { response ->
-                        val body = response.body?.string().orEmpty()
+                    .build()
+                val downloaded = mutableListOf<MusicTrack>()
+                if (useLyria) {
+                    val body = client.newCall(request).execute().use { response ->
+                        val responseText = response.body?.string().orEmpty()
                         if (!response.isSuccessful) {
-                            val message = try { JSONObject(body).optString("error", "Gagal memeriksa status.") } catch (_: Exception) { "Gagal memeriksa status." }
+                            val message = try { JSONObject(responseText).optString("error", "Lyria error ${response.code}") } catch (_: Exception) { "Lyria error ${response.code}" }
                             throw IllegalStateException(message)
                         }
-                        val job = JSONObject(body)
-                        lastStatus = job.optString("status", "PROCESSING")
-                        val normalizedStatus = lastStatus.uppercase()
-                        if (normalizedStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
-                        if (normalizedStatus == "COMPLETED" || normalizedStatus == "SUCCEEDED") completedTracks = job.optJSONArray("tracks")
+                        JSONObject(responseText)
                     }
-                    if (completedTracks == null) {
-                        activity.runOnUiThread { status = "Membuat lagu dengan Suno... (${lastStatus.lowercase()})" }
+                    val tracks = body.optJSONArray("tracks") ?: throw IllegalStateException("Lyria tidak mengembalikan daftar lagu.")
+                    for (index in 0 until tracks.length()) {
+                        val track = tracks.getJSONObject(index)
+                        val encoded = track.optString("audioBase64")
+                        if (encoded.isBlank()) continue
+                        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                        if (bytes.isNotEmpty()) downloaded.add(MusicTrack(
+                            title = track.optString("title", title.ifBlank { "Lyria MusicAI" }),
+                            audioBytes = bytes,
+                            durationSeconds = track.optDouble("duration", durationSeconds.toDouble()).toFloat(),
+                            isAiGenerated = true
+                        ))
+                    }
+                } else {
+                    val jobId = client.newCall(request).execute().use { response ->
+                        val responseText = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) {
+                            val message = try { JSONObject(responseText).optString("error", "Server error ${response.code}") } catch (_: Exception) { "Server error ${response.code}" }
+                            throw IllegalStateException(message)
+                        }
+                        JSONObject(responseText).optString("jobId").takeIf { it.isNotBlank() }
+                            ?: throw IllegalStateException("Server tidak mengembalikan ID generasi.")
+                    }
+                    var completedTracks: org.json.JSONArray? = null
+                    var lastStatus = "QUEUED"
+                    var attempts = 0
+                    while (completedTracks == null && attempts < 90) {
+                        attempts++
+                        Thread.sleep(5_000)
+                        val statusRequest = Request.Builder()
+                            .url("${backendUrl.trim().trimEnd('/')}/api/job/${jobId}")
+                            .get()
+                            .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
+                            .build()
+                        client.newCall(statusRequest).execute().use { response ->
+                            val responseText = response.body?.string().orEmpty()
+                            if (!response.isSuccessful) {
+                                val message = try { JSONObject(responseText).optString("error", "Gagal memeriksa status.") } catch (_: Exception) { "Gagal memeriksa status." }
+                                throw IllegalStateException(message)
+                            }
+                            val job = JSONObject(responseText)
+                            lastStatus = job.optString("status", "PROCESSING")
+                            val normalizedStatus = lastStatus.uppercase()
+                            if (normalizedStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
+                            if (normalizedStatus == "COMPLETED" || normalizedStatus == "SUCCEEDED") completedTracks = job.optJSONArray("tracks")
+                        }
+                        if (completedTracks == null) activity.runOnUiThread { status = "Membuat lagu dengan MusicAPI... (${lastStatus.lowercase()})" }
+                    }
+                    val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
+                    if (tracks.length() == 0) throw IllegalStateException("MusicAPI selesai tetapi tidak mengembalikan audio.")
+                    for (index in 0 until tracks.length()) {
+                        val track = tracks.getJSONObject(index)
+                        val audioUrl = track.optString("audioUrl")
+                        if (!audioUrl.startsWith("https://")) continue
+                        val bytes = client.newCall(Request.Builder().url(audioUrl).get().build()).execute().use { response ->
+                            if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh hasil ${index + 1} (${response.code}).")
+                            response.body?.bytes() ?: throw IllegalStateException("Audio hasil ${index + 1} kosong.")
+                        }
+                        if (bytes.isNotEmpty()) downloaded.add(MusicTrack(
+                            title = track.optString("title", "$title - Hasil ${index + 1}").ifBlank { "$title - Hasil ${index + 1}" },
+                            audioBytes = bytes,
+                            imageUrl = track.optString("imageUrl").takeIf { it.startsWith("https://") },
+                            durationSeconds = if (track.has("duration")) track.optDouble("duration").toFloat() else null,
+                            isAiGenerated = true
+                        ))
                     }
                 }
-                val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
-                if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
-                val downloaded = mutableListOf<MusicTrack>()
+
                 for (index in 0 until tracks.length()) {
                     val track = tracks.getJSONObject(index)
                     val audioUrl = track.optString("audioUrl")
@@ -358,7 +404,7 @@ fun MusicAiScreen() {
                     audioBytes = generatedTracks[selectedTrackIndex].audioBytes
                     title = generatedTracks[selectedTrackIndex].title
                     audioMimeType = "audio/mpeg"
-                    status = "${downloaded.size} hasil lagu berhasil dibuat dan siap dipilih."
+                    status = "${downloaded.size} hasil lagu berhasil dibuat dengan ${if (useLyria) "Google Lyria" else "MusicAPI"} dan siap dipilih."
                     busy = false
                     page = AppPage.LIBRARY
                 }
