@@ -747,3 +747,11 @@ fun MusicAiScreen() {
                                 Text("Unduh MP3")
                             }
                         }
+                        }
+                    }
+                }
+                Text("MusicAI • Flow Music companion", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
+        }
+    }
+}
