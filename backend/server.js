@@ -4,124 +4,97 @@ import rateLimit from "express-rate-limit";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const apiKey = process.env.STABILITY_API_KEY;
+const apiKey = process.env.APIFRAME_API_KEY;
 
 app.set("trust proxy", 1);
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "80kb" }));
 app.use(rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "musicai-backend", provider: "stable-audio-3" });
+  res.json({ ok: true, service: "musicai-backend", provider: "apiframe-suno" });
 });
 
 function cleanString(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-function makePrompt({ genre, mood, bpm, lyrics }) {
-  const theme = lyrics.replace(/\[[^\]]+\]/g, " ").replace(/\s+/g, " ").slice(0, 1800);
-  return [
-    "Create a fully instrumental music track. No singing, no spoken words, no vocals.",
-    `Genre: ${genre}.`,
-    `Mood and arrangement: ${mood}.`,
-    `Tempo direction: approximately ${bpm} BPM.`,
-    "Use a complete musical arrangement with a clear intro, main theme, development, and satisfying ending.",
-    "The following user lyrics are thematic inspiration only and must not be sung or spoken:",
-    theme
-  ].join(" ");
-}
-
 app.post("/api/generate", async (req, res) => {
-  if (!apiKey) return res.status(503).json({ error: "Backend belum dikonfigurasi: STABILITY_API_KEY belum diatur." });
+  if (!apiKey) return res.status(503).json({ error: "Backend belum dikonfigurasi: APIFRAME_API_KEY belum diatur." });
 
   const title = cleanString(req.body?.title, 80) || "MusicAI";
-  const lyrics = cleanString(req.body?.lyrics, 6000);
-  const genre = cleanString(req.body?.genre, 50) || "Pop";
-  const mood = cleanString(req.body?.mood, 300) || "uplifting and melodic";
+  const lyrics = cleanString(req.body?.lyrics, 5000);
+  const genre = cleanString(req.body?.genre, 100) || "Pop";
+  const mood = cleanString(req.body?.mood, 200) || "uplifting and melodic";
+  const vocal = req.body?.vocal === "male" ? "m" : "f";
   const bpm = Number(req.body?.bpm || 110);
-  const duration = Number(req.body?.duration || 120);
 
-  if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan tema atau lirik minimal 10 karakter." });
+  if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
-  if (!Number.isFinite(duration) || duration < 15 || duration > 380) return res.status(400).json({ error: "Durasi harus antara 15 dan 380 detik." });
 
+  const style = [genre, mood, `${bpm} BPM`, vocal === "m" ? "male lead vocal" : "female lead vocal"].join(", ");
   try {
-    const form = new FormData();
-    form.set("model", "stable-audio-3");
-    form.set("prompt", makePrompt({ genre, mood, bpm, lyrics }));
-    form.set("duration", String(duration));
-    form.set("output_format", "mp3");
-
-    const start = await fetch("https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio", {
+    const response = await fetch("https://api.apiframe.ai/v2/music/generate", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "audio/*, application/json"
-      },
-      body: form,
-      signal: AbortSignal.timeout(20_000)
+      headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: lyrics,
+        model: "suno",
+        sunoParams: {
+          custom_mode: true,
+          instrumental: false,
+          model_version: "V5_5",
+          title,
+          style,
+          vocal_gender: vocal
+        }
+      }),
+      signal: AbortSignal.timeout(30_000)
     });
 
-    if (!start.ok) {
-      const detail = await start.text();
-      console.error("Stability start error:", start.status, detail.slice(0, 1500));
-      const status = [400, 401, 402, 403, 413, 422, 429].includes(start.status) ? start.status : 502;
-      let detailMessage = "Stability AI gagal menerima permintaan.";
-      try {
-        const parsed = JSON.parse(detail);
-        if (Array.isArray(parsed.errors) && parsed.errors.length) detailMessage = parsed.errors.join(" ");
-      } catch {}
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("Apiframe generation error:", response.status, JSON.stringify(payload).slice(0, 1200));
+      const status = [400, 401, 402, 429, 503].includes(response.status) ? response.status : 502;
       return res.status(status).json({
-        error: start.status === 401 ? "API Key Stability AI tidak valid." :
-          start.status === 402 ? "Kredit Stability AI tidak mencukupi." :
-          start.status === 403 ? "Prompt ditolak sistem moderasi Stability AI." :
-          start.status === 429 ? "Batas permintaan Stability AI tercapai. Coba lagi nanti." :
-          detailMessage
+        error: response.status === 401 ? "API key Apiframe tidak valid." :
+          response.status === 402 ? "Kredit Apiframe tidak cukup." :
+          response.status === 429 ? "Batas permintaan Apiframe tercapai. Coba lagi nanti." :
+          payload.error || payload.message || "Apiframe gagal memulai generasi."
       });
     }
-
-    const started = await start.json();
-    const generationId = started.id;
-    if (!generationId) return res.status(502).json({ error: "Stability AI tidak mengembalikan ID generasi." });
-
-    // Stable Audio 3 is asynchronous. Poll for up to 45 seconds to stay within
-    // common serverless execution limits; Android can retry if the job takes longer.
-    const deadline = Date.now() + 45_000;
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 5_000));
-      const result = await fetch(`https://api.stability.ai/v2beta/audio/results/${encodeURIComponent(generationId)}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "audio/*"
-        },
-        signal: AbortSignal.timeout(20_000)
-      });
-
-      if (result.status === 202) continue;
-      if (!result.ok) {
-        const detail = await result.text();
-        console.error("Stability result error:", result.status, detail.slice(0, 1500));
-        return res.status(result.status === 402 ? 402 : 502).json({ error: "Gagal mengambil hasil audio dari Stability AI." });
-      }
-
-      const audio = Buffer.from(await result.arrayBuffer());
-      if (!audio.length) return res.status(502).json({ error: "Stability AI mengembalikan audio kosong." });
-      res.setHeader("Content-Type", result.headers.get("content-type") || "audio/mpeg");
-      res.setHeader("Content-Disposition", `attachment; filename="${title.replace(/[^a-z0-9-_]/gi, "_")}.mp3"`);
-      res.setHeader("Cache-Control", "no-store");
-      return res.status(200).send(audio);
-    }
-
-    return res.status(504).json({ error: "Musik masih diproses. Coba buat ulang beberapa saat lagi." });
+    if (!payload.jobId) return res.status(502).json({ error: "Apiframe tidak mengembalikan jobId." });
+    return res.status(202).json({ jobId: payload.jobId, status: payload.status || "QUEUED", title });
   } catch (error) {
-    console.error("Stable Audio generation failed:", error);
-    return res.status(504).json({ error: "Koneksi ke Stability AI timeout atau terputus." });
+    console.error("Apiframe submit failed:", error);
+    return res.status(504).json({ error: "Koneksi ke Apiframe timeout atau terputus." });
+  }
+});
+
+app.get("/api/job/:id", async (req, res) => {
+  if (!apiKey) return res.status(503).json({ error: "APIFRAME_API_KEY belum diatur." });
+  const id = cleanString(req.params.id, 80);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "ID generasi tidak valid." });
+  try {
+    const response = await fetch(`https://api.apiframe.ai/v2/jobs/${encodeURIComponent(id)}`, {
+      headers: { "X-API-Key": apiKey, Accept: "application/json" },
+      signal: AbortSignal.timeout(20_000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const status = [400, 401, 404, 429].includes(response.status) ? response.status : 502;
+      return res.status(status).json({ error: payload.error || payload.message || "Gagal memeriksa status generasi." });
+    }
+    return res.json({
+      jobId: payload.id || id,
+      status: payload.status,
+      progress: payload.progress ?? null,
+      error: payload.error || null,
+      tracks: payload.result?.tracks || []
+    });
+  } catch (error) {
+    console.error("Apiframe job check failed:", error);
+    return res.status(504).json({ error: "Koneksi saat memeriksa hasil terputus." });
   }
 });
 
