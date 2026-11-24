@@ -434,7 +434,7 @@ fun MusicAiScreen() {
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text("MusicAI", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Text("CREATE YOUR SOUND  •  AI MUSIC STUDIO", color = Color(0xFFBBA6D9), fontSize = 10.sp, letterSpacing = 1.2.sp)
+                        Text("CREATE YOUR MUSIC  •  AI MUSIC STUDIO", color = Color(0xFFBBA6D9), fontSize = 10.sp, letterSpacing = 1.2.sp)
                     }
                 }
 
