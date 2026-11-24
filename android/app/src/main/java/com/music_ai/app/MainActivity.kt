@@ -247,8 +247,7 @@ fun MusicAiScreen() {
                 }
                 val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
                 if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
-                val downloaded = mutableListOf<MusicTrack>()
-                for (index in 0 until tracks.length()) {
+                val downloaded = mutableListOf<MusicTrack>()                for (index in 0 until tracks.length()) {
                     val track = tracks.getJSONObject(index)
                     val audioUrl = track.optString("audioUrl")
                     if (!audioUrl.startsWith("https://")) continue
@@ -497,8 +496,7 @@ fun MusicAiScreen() {
                             Text("Tempo", fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
                             Text("${bpm.toInt()} BPM", color = accent, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
+                        }                        Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
 
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
                         Text("Durasi maksimal AI: 6 menit. Untuk durasi ini, gunakan mode lirik agar hasil lebih mendekati target.", color = Color.LightGray, fontSize = 11.sp)
@@ -728,7 +726,7 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
                                 Text("Versi 0.5.0 • Android native", color = Color.LightGray, fontSize = 12.sp)
-                                Text("MusicAI adalah studio musik AI untuk membuat lagu dari ide atau lirik, mengatur genre, mood, tempo, durasi, dan vokal pria, wanita, atau duet. Draft otomatis tersimpan dan hasil generasi masuk ke riwayat perangkat.", color = Color.LightGray, fontSize = 13.sp)
+                                Text("MusicAI adalah studio musik berbasis kecerdasan buatan (AI) untuk menciptakan lagu dari ide sederhana atau lirik lengkap. Pilih genre, mood, tempo, durasi, serta karakter vokal pria, wanita, duet (pria + wanita), atau instrumental. Putar hasilnya, sesuaikan judul dan lirik, buat ulang dengan perubahan, lalu unduh musik ke perangkat. Draft dan riwayat lagu tersimpan secara lokal di perangkat.", color = Color.LightGray, fontSize = 13.sp)
                                 Text("Dikembangkan oleh ryuzee_project", color = Color(0xFFD6C7FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
@@ -748,10 +746,3 @@ fun MusicAiScreen() {
                                 Text("Unduh MP3")
                             }
                         }
-                    }
-                }
-                Text("MusicAI • Flow Music companion", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-            }
-        }
-    }
-}
