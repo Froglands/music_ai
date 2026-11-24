@@ -389,7 +389,7 @@ fun MusicAiScreen() {
             audioBytes = generatedTracks[selectedTrackIndex].audioBytes
             title = generatedTracks[selectedTrackIndex].title
         }
-        status = "Lagu dihapus dari Pustaka."
+        status = "Lagu dihapus dari Pustaka MusicAI. File asli di perangkat tetap aman."
     }
 
     fun togglePlayback() {
@@ -464,8 +464,8 @@ fun MusicAiScreen() {
         if (trackToDelete >= 0 && trackToDelete < generatedTracks.size) {
             AlertDialog(
                 onDismissRequest = { trackToDelete = -1 },
-                title = { Text("Hapus lagu?") },
-                text = { Text("\" ${generatedTracks[trackToDelete].title} \" akan dihapus dari Pustaka MusicAI dan penyimpanan internal aplikasi.") },
+                title = { Text("Hapus dari MusicAI?") },
+                text = { Text("\" ${generatedTracks[trackToDelete].title} \" hanya akan dihapus dari Pustaka MusicAI. File asli di penyimpanan perangkat tetap aman dan tidak disentuh.") },
                 confirmButton = {
                     TextButton(onClick = { val index = trackToDelete; trackToDelete = -1; deleteTrack(index); if (page == AppPage.PLAYER && generatedTracks.isEmpty()) page = AppPage.LIBRARY }) { Text("Hapus", color = Color(0xFFFF8A80)) }
                 },
@@ -670,7 +670,7 @@ fun MusicAiScreen() {
                                         IconButton(onClick = { menuExpanded = true }) { Icon(Icons.Default.MoreVert, "Opsi lagu") }
                                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                             DropdownMenuItem(text = { Text("Buka pemutar") }, onClick = { menuExpanded = false; if (index != selectedTrackIndex) selectTrack(index, false); page = AppPage.PLAYER })
-                                            DropdownMenuItem(text = { Text("Hapus dari pustaka") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menuExpanded = false; trackToDelete = index })
+                                            DropdownMenuItem(text = { Text("Hapus dari MusicAI") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menuExpanded = false; trackToDelete = index })
                                         }
                                     }
                                 }
