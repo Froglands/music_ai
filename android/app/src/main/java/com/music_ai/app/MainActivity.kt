@@ -332,24 +332,40 @@ fun MusicAiScreen() {
                     val body = client.newCall(request).execute().use { response ->
                         val responseText = response.body?.string().orEmpty()
                         if (!response.isSuccessful) {
-                            val message = try { JSONObject(responseText).optString("error", "Lyria error ${response.code}") } catch (_: Exception) { "Lyria error ${response.code}" }
+                            val message = try {
+                                val errorJson = JSONObject(responseText)
+                                errorJson.optJSONObject("error")?.optString("message")
+                                    ?: errorJson.optString("error", "Lyria error ${response.code}")
+                            } catch (_: Exception) { "Lyria error ${response.code}" }
                             throw IllegalStateException(message)
                         }
                         JSONObject(responseText)
                     }
-                    val tracks = body.optJSONArray("tracks") ?: throw IllegalStateException("Lyria tidak mengembalikan daftar lagu.")
-                    for (index in 0 until tracks.length()) {
-                        val track = tracks.getJSONObject(index)
-                        val encoded = track.optString("audioBase64")
-                        if (encoded.isBlank()) continue
-                        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-                        if (bytes.isNotEmpty()) downloaded.add(MusicTrack(
-                            title = track.optString("title", title.ifBlank { "Lyria MusicAI" }),
-                            audioBytes = bytes,
-                            durationSeconds = track.optDouble("duration", durationSeconds.toDouble()).toFloat(),
-                            isAiGenerated = true
-                        ))
+                    var encodedAudio = body.optJSONObject("output_audio")?.optString("data").orEmpty()
+                    if (encodedAudio.isBlank()) {
+                        val steps = body.optJSONArray("steps")
+                        if (steps != null) {
+                            for (stepIndex in 0 until steps.length()) {
+                                val step = steps.optJSONObject(stepIndex) ?: continue
+                                if (step.optString("type") != "model_output") continue
+                                val blocks = step.optJSONArray("content") ?: continue
+                                for (blockIndex in 0 until blocks.length()) {
+                                    val contentBlock = blocks.optJSONObject(blockIndex) ?: continue
+                                    if (contentBlock.optString("type") == "audio") encodedAudio = contentBlock.optString("data")
+                                    if (encodedAudio.isNotBlank()) break
+                                }
+                                if (encodedAudio.isNotBlank()) break
+                            }
+                        }
                     }
+                    if (encodedAudio.isBlank()) throw IllegalStateException("Lyria merespons tetapi audio tidak ditemukan.")
+                    val audio = android.util.Base64.decode(encodedAudio, android.util.Base64.DEFAULT)
+                    if (audio.isNotEmpty()) downloaded.add(MusicTrack(
+                        title = title.ifBlank { "Lyria MusicAI" },
+                        audioBytes = audio,
+                        durationSeconds = durationSeconds.toFloat(),
+                        isAiGenerated = true
+                    ))
                 } else {
                     val jobId = client.newCall(request).execute().use { response ->
                         val responseText = response.body?.string().orEmpty()
@@ -1004,7 +1020,7 @@ fun MusicAiScreen() {
                                 }
                                 Divider(color = Color(0x665F5477))
                                 Text("GOOGLE LYRIA 3.5 • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                Text("Masukkan Gemini API key dari Google AI Studio. Key disimpan terenkripsi di perangkat dan hanya dikirim ketika provider Lyria dipilih. Alternatifnya, atur GEMINI_API_KEY di Vercel.", color = Color.LightGray, fontSize = 12.sp)
+                                Text("Masukkan Gemini API key dari Google AI Studio. Key disimpan terenkripsi di perangkat dan dikirim langsung ke Google hanya ketika provider Lyria dipilih.", color = Color.LightGray, fontSize = 12.sp)
                                 OutlinedTextField(
                                     value = developerLyriaApiKey,
                                     onValueChange = { developerLyriaApiKey = it },
