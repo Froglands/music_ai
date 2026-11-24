@@ -18,8 +18,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +44,13 @@ import java.util.concurrent.TimeUnit
 // Backend URL is configured and saved from the Settings screen.
 
 private enum class AppPage { STUDIO, EDIT, SETTINGS }
+
+private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null)
+
+private fun formatTime(milliseconds: Int): String {
+    val seconds = milliseconds.coerceAtLeast(0) / 1000
+    return "%d:%02d".format(seconds / 60, seconds % 60)
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,6 +81,11 @@ fun MusicAiScreen() {
     var status by remember { mutableStateOf("Siap membuat lagu.") }
     var audioBytes by remember { mutableStateOf<ByteArray?>(null) }
     var audioMimeType by remember { mutableStateOf("audio/mpeg") }
+    var generatedTracks by remember { mutableStateOf(listOf<MusicTrack>()) }
+    var selectedTrackIndex by remember { mutableIntStateOf(0) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var playbackPosition by remember { mutableIntStateOf(0) }
+    var playbackDuration by remember { mutableIntStateOf(0) }
     var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
