@@ -1,4 +1,4 @@
-package com.music_ai.app
+package com.ryuzeeproject.music_ai
 
 import android.content.ContentValues
 import android.media.MediaPlayer
