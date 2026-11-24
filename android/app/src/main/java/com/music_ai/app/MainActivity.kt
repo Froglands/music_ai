@@ -143,7 +143,7 @@ fun MusicAiScreen() {
     var developerVerifying by remember { mutableStateOf(false) }
     var developerMessage by remember { mutableStateOf("") }
     var backendUrl by remember {
-        mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "") ?: "")
+        mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "https://music-ai-valve7.vercel.app") ?: "https://music-ai-valve7.vercel.app")
     }
 
     val importAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -528,6 +528,16 @@ fun MusicAiScreen() {
                         ) {
                             if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                             else Text("CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
+                        }
+                        if (generatedTracks.isNotEmpty()) {
+                            OutlinedButton(onClick = {
+                                page = AppPage.EDIT
+                                selectTrack(0, false)
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.MusicNote, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Buka riwayat lagu • ${generatedTracks.size} track")
+                            }
                         }
                     }
 
