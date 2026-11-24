@@ -101,6 +101,46 @@ private fun saveMusicHistory(context: android.content.Context, tracks: List<Musi
     return saved
 }
 
+
+private fun apiKeySecret(context: android.content.Context): javax.crypto.SecretKey {
+    val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    val alias = "MusicAI.ApiKey"
+    (store.getKey(alias, null) as? javax.crypto.SecretKey)?.let { return it }
+    val generator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore")
+    generator.init(android.security.keystore.KeyGenParameterSpec.Builder(
+        alias,
+        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+    ).setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setRandomizedEncryptionRequired(true).build())
+    return generator.generateKey()
+}
+
+private fun saveDeveloperApiKey(context: android.content.Context, value: String) {
+    val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+    if (value.isBlank()) {
+        prefs.edit().remove("provider_api_key_encrypted").apply()
+        return
+    }
+    val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, apiKeySecret(context))
+    val encrypted = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+    prefs.edit().putString("provider_api_key_encrypted", android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)).apply()
+}
+
+private fun loadDeveloperApiKey(context: android.content.Context): String {
+    return runCatching {
+        val encoded = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+            .getString("provider_api_key_encrypted", null) ?: return ""
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
+        val iv = bytes.copyOfRange(0, 12)
+        val payload = bytes.copyOfRange(12, bytes.size)
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, apiKeySecret(context), javax.crypto.spec.GCMParameterSpec(128, iv))
+        String(cipher.doFinal(payload), Charsets.UTF_8)
+    }.getOrDefault("")
+}
+
 private fun formatTime(milliseconds: Int): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return "%d:%02d".format(seconds / 60, seconds % 60)
@@ -152,6 +192,8 @@ fun MusicAiScreen() {
     var developerUnlocked by remember { mutableStateOf(false) }
     var developerVerifying by remember { mutableStateOf(false) }
     var developerMessage by remember { mutableStateOf("") }
+    var developerApiKey by remember { mutableStateOf(loadDeveloperApiKey(context)) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
     var backendUrl by remember {
         val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
         val savedUrl = prefs.getString("backend_url", null)
@@ -223,6 +265,8 @@ fun MusicAiScreen() {
             status = "Lirik minimal 10 karakter."
             return
         }
+        val apiKeyOverride = if (developerUnlocked) developerApiKey.trim() else ""
+        val devCodeForRequest = if (apiKeyOverride.isNotBlank()) developerCode else ""
         busy = true
         status = "Mengirim permintaan ke server..."
         Thread {
@@ -246,6 +290,7 @@ fun MusicAiScreen() {
                 val request = Request.Builder()
                     .url("${backendUrl.trim().trimEnd('/')}/api/generate")
                     .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
                     .build()
                 val jobId = client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
@@ -266,6 +311,7 @@ fun MusicAiScreen() {
                     val statusRequest = Request.Builder()
                         .url("${backendUrl.trim().trimEnd('/')}/api/job/${jobId}")
                         .get()
+                        .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
                         .build()
                     client.newCall(statusRequest).execute().use { response ->
                         val body = response.body?.string().orEmpty()
@@ -800,7 +846,7 @@ fun MusicAiScreen() {
                                 }
                                 if (developerUnlocked) {
                                 Text(
-                                    "Masukkan URL HTTPS backend yang sudah online. API key MusicAPI disimpan sebagai environment variable di server, bukan di aplikasi.",
+                                    "API key pengganti hanya dipakai saat mode pengembang terbuka. Key disimpan terenkripsi di perangkat dan dikirim ke backend melalui HTTPS; Vercel environment variable tidak diubah.",
                                     color = Color.LightGray, fontSize = 12.sp
                                 )
                                 OutlinedTextField(
@@ -816,6 +862,38 @@ fun MusicAiScreen() {
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
+                                Divider(color = Color(0x665F5477))
+                                Text("API KEY MUSICAPI • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("Ganti key kapan saja tanpa mengubah environment variable Vercel. Key tersimpan terenkripsi di perangkat ini.", color = Color.LightGray, fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = developerApiKey,
+                                    onValueChange = { developerApiKey = it },
+                                    label = { Text("API key baru") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    visualTransformation = if (apiKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        TextButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Text(if (apiKeyVisible) "Sembunyikan" else "Lihat") }
+                                    }
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            saveDeveloperApiKey(context, developerApiKey.trim())
+                                            developerMessage = if (developerApiKey.isBlank()) "API key lokal dihapus." else "API key tersimpan terenkripsi di perangkat."
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        enabled = developerCode.isNotBlank()
+                                    ) { Text("Simpan API key") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            developerApiKey = ""
+                                            saveDeveloperApiKey(context, "")
+                                            developerMessage = "API key lokal dihapus. Backend kembali memakai key Vercel."
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Hapus / Reset") }
+                                }
                                 OutlinedButton(
                                     onClick = {
                                         Thread {
