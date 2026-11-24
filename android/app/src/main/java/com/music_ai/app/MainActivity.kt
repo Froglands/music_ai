@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -65,10 +67,32 @@ fun MusicAiScreen() {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Siap membuat lagu.") }
     var audioBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var audioMimeType by remember { mutableStateOf("audio/mpeg") }
+    var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
     var backendUrl by remember {
         mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("backend_url", "") ?: "")
+    }
+
+    val importAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw IllegalStateException("File tidak bisa dibaca.")
+                if (bytes.isEmpty()) throw IllegalStateException("File audio kosong.")
+                val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
+                val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Flow Music"
+                audioBytes = bytes
+                audioMimeType = mime
+                importedFileName = name
+                title = name.substringBeforeLast('.', name).ifBlank { "Lagu dari Flow" }
+                status = "Audio berhasil diimpor • ${bytes.size / 1024} KB"
+                page = AppPage.EDIT
+            } catch (e: Exception) {
+                status = "Gagal mengimpor audio: ${e.message}"
+            }
+        }
     }
 
     val genres = listOf("Dangdut Koplo", "Dangdut", "Pop", "Rock", "Ska", "Rap", "Jazz", "Reggae", "EDM", "Akustik")
@@ -132,7 +156,8 @@ fun MusicAiScreen() {
     fun playAudio() {
         val bytes = audioBytes ?: return
         try {
-            val temp = java.io.File(context.cacheDir, "musicai-preview.mp3")
+            val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
+            val temp = java.io.File(context.cacheDir, "musicai-preview.$extension")
             temp.writeBytes(bytes)
             player?.release()
             player = MediaPlayer().apply {
@@ -152,8 +177,9 @@ fun MusicAiScreen() {
         try {
             val safeName = title.trim().ifBlank { "MusicAI" }.replace(Regex("[^a-zA-Z0-9 _-]"), "_")
             val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, "$safeName.mp3")
-                put(MediaStore.MediaColumns.MIME_TYPE, "audio/mpeg")
+                val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "$safeName.$extension")
+                put(MediaStore.MediaColumns.MIME_TYPE, audioMimeType)
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "Music/MusicAI")
             }
             val uri = context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
@@ -296,8 +322,19 @@ fun MusicAiScreen() {
 
                     AppPage.EDIT -> {
                         Text("Edit lagu", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        OutlinedButton(
+                            onClick = { importAudioLauncher.launch(arrayOf("audio/*")) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Download, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Impor lagu dari Google Flow")
+                        }
+                        if (importedFileName.isNotBlank()) {
+                            Text("File: $importedFileName", color = Color.LightGray, fontSize = 12.sp)
+                        }
                         Text(
-                            "Ubah judul, lirik, genre, vokal, atau tempo. Jika ingin mendengar versi perubahan, buat ulang lagu.",
+                            "Impor lagu dari Google Flow, putar, simpan, atau edit detail proyek musikmu.",
                             color = Color.LightGray, fontSize = 13.sp
                         )
                         OutlinedTextField(
@@ -399,7 +436,7 @@ fun MusicAiScreen() {
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
-                                Text("Versi 0.3.0 • Android native • Instrumental by Stable Audio", color = Color.LightGray, fontSize = 12.sp)
+                                Text("Versi 0.4.0 • Android native • Flow Music import", color = Color.LightGray, fontSize = 12.sp)
                             }
                         }
                     }
@@ -420,7 +457,7 @@ fun MusicAiScreen() {
                         }
                     }
                 }
-                Text("MusicAI • Powered by Stable Audio", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text("MusicAI • Flow Music companion", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
         }
     }
