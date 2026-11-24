@@ -260,10 +260,11 @@ fun MusicAiScreen() {
                 }
                 if (downloaded.isEmpty()) throw IllegalStateException("Suno selesai tetapi audio tidak bisa diunduh.")
                 activity.runOnUiThread {
-                    generatedTracks = saveMusicHistory(context, downloaded)
-                    selectedTrackIndex = 0
-                    audioBytes = generatedTracks[0].audioBytes
-                    title = downloaded[0].title
+                    val firstNewTrack = generatedTracks.size
+                    generatedTracks = saveMusicHistory(context, generatedTracks + downloaded)
+                    selectedTrackIndex = firstNewTrack
+                    audioBytes = generatedTracks[selectedTrackIndex].audioBytes
+                    title = generatedTracks[selectedTrackIndex].title
                     audioMimeType = "audio/mpeg"
                     status = "${downloaded.size} hasil lagu berhasil dibuat dan siap dipilih."
                     busy = false
