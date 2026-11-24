@@ -75,9 +75,7 @@ fun MusicAiScreen() {
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
     var title by remember { mutableStateOf("") }
-    var lyrics by remember {
-        mutableStateOf("[Verse 1]\nTulis lirikmu di sini\n\n[Chorus]\nIsi bagian reff di sini")
-    }
+    var lyrics by remember { mutableStateOf("") }
     var genre by remember { mutableStateOf("Dangdut Koplo") }
     var vocal by remember { mutableStateOf("female") }
     var bpm by remember { mutableFloatStateOf(110f) }
@@ -380,7 +378,8 @@ fun MusicAiScreen() {
                             value = lyrics, onValueChange = { lyrics = it },
                             label = { Text("Lirik atau ide lagu") },
                             modifier = Modifier.fillMaxWidth().height(240.dp),
-                            placeholder = { Text("Tulis lirik atau cukup ceritakan ide lagumu...\n\nContoh ide: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nAtau mulai dengan [Verse 1] untuk menulis lirik sendiri.") }
+                            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x33201B31), unfocusedContainerColor = Color(0x22201B31), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x665F5477)),
+                            placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nPetunjuk ini akan hilang saat kamu mulai mengetik.") }
                         )
 
                         Text("Genre musik", fontWeight = FontWeight.SemiBold)
