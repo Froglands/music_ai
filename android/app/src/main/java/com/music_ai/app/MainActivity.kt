@@ -197,6 +197,7 @@ fun MusicAiScreen() {
     var developerApiKey by remember { mutableStateOf(loadDeveloperApiKey(context)) }
     var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
     var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
+    var showLyriaCostConfirm by remember { mutableStateOf(false) }
     var apiKeyVisible by remember { mutableStateOf(false) }
     var backendUrl by remember {
         val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
@@ -694,7 +695,7 @@ fun MusicAiScreen() {
                         }
                         Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
-                        Text("Durasi maksimal AI: 6 menit. Untuk durasi ini, gunakan mode lirik agar hasil lebih mendekati target.", color = Color.LightGray, fontSize = 11.sp)
+                        Text(if (selectedProvider == "lyria") "Lyria 3.5: lagu penuh hingga sekitar 3 menit. Durasi diarahkan melalui prompt." else "Durasi maksimal MusicAPI: 6 menit.", color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
                         Box {
                             OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -702,7 +703,7 @@ fun MusicAiScreen() {
                                 Text("⌄")
                             }
                             DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
-                                listOf(60, 120, 180, 240, 300, 360).forEach { seconds ->
+                                (if (selectedProvider == "lyria") listOf(60, 120, 180) else listOf(60, 120, 180, 240, 300, 360)).forEach { seconds ->
                                     DropdownMenuItem(
                                         text = { Text(if (seconds == 360) "Maksimal AI • 6 menit" else if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
                                         onClick = { durationSeconds = seconds; durationExpanded = false }
