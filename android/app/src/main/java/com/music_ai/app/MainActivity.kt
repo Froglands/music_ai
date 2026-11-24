@@ -60,6 +60,7 @@ fun MusicAiScreen() {
     var genre by remember { mutableStateOf("Dangdut Koplo") }
     var vocal by remember { mutableStateOf("female") }
     var bpm by remember { mutableFloatStateOf(110f) }
+    var durationSeconds by remember { mutableIntStateOf(120) }
     var mood by remember { mutableStateOf("Enerjik dan emosional") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Siap membuat lagu.") }
@@ -93,6 +94,7 @@ fun MusicAiScreen() {
                     put("genre", genre)
                     put("vocal", vocal)
                     put("bpm", bpm.toInt())
+                    put("duration", durationSeconds)
                     put("mood", mood)
                 }
                 val client = OkHttpClient.Builder()
@@ -258,6 +260,23 @@ fun MusicAiScreen() {
                             Text("${bpm.toInt()} BPM", color = accent, fontWeight = FontWeight.Bold)
                         }
                         Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
+
+                        Text("Durasi musik", fontWeight = FontWeight.SemiBold)
+                        var durationExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("${durationSeconds / 60} menit ${durationSeconds % 60} detik", modifier = Modifier.weight(1f))
+                                Text("⌄")
+                            }
+                            DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
+                                listOf(30, 60, 120, 180, 240, 300, 380).forEach { seconds ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
+                                        onClick = { durationSeconds = seconds; durationExpanded = false }
+                                    )
+                                }
+                            }
+                        }
 
                         OutlinedTextField(
                             value = mood, onValueChange = { mood = it },
