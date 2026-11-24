@@ -44,11 +44,11 @@ app.post("/api/generate", async (req, res) => {
   const genre = cleanString(req.body?.genre, 50) || "Pop";
   const mood = cleanString(req.body?.mood, 300) || "uplifting and melodic";
   const bpm = Number(req.body?.bpm || 110);
-  const duration = Math.min(60, Math.max(15, Number(req.body?.duration || 30)));
+  const duration = Number(req.body?.duration || 120);
 
   if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan tema atau lirik minimal 10 karakter." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
-  if (!Number.isFinite(duration)) return res.status(400).json({ error: "Durasi tidak valid." });
+  if (!Number.isFinite(duration) || duration < 15 || duration > 380) return res.status(400).json({ error: "Durasi harus antara 15 dan 380 detik." });
 
   try {
     const form = new FormData();
