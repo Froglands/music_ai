@@ -48,7 +48,7 @@ import java.util.concurrent.TimeUnit
 
 // Backend URL is configured and saved from the Settings screen.
 
-private enum class AppPage { STUDIO, EDIT, SETTINGS }
+private enum class AppPage { STUDIO, LIBRARY, PLAYER, SETTINGS }
 
 private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null)
 
@@ -159,12 +159,15 @@ fun MusicAiScreen() {
                 if (bytes.isEmpty()) throw IllegalStateException("File audio kosong.")
                 val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
                 val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Flow Music"
+                val importedTitle = name.substringBeforeLast('.', name).ifBlank { "Lagu lokal" }
+                generatedTracks = saveMusicHistory(context, generatedTracks + MusicTrack(importedTitle, bytes))
+                selectedTrackIndex = generatedTracks.lastIndex
                 audioBytes = bytes
                 audioMimeType = mime
                 importedFileName = name
-                title = name.substringBeforeLast('.', name).ifBlank { "Lagu dari Flow" }
-                status = "Audio berhasil diimpor • ${bytes.size / 1024} KB"
-                page = AppPage.EDIT
+                title = importedTitle
+                status = "Lagu berhasil ditambahkan ke Pustaka • ${bytes.size / 1024} KB"
+                page = AppPage.PLAYER
             } catch (e: Exception) {
                 status = "Gagal mengimpor audio: ${e.message}"
             }
@@ -273,7 +276,7 @@ fun MusicAiScreen() {
                     audioMimeType = "audio/mpeg"
                     status = "${downloaded.size} hasil lagu berhasil dibuat dan siap dipilih."
                     busy = false
-                    page = AppPage.EDIT
+                    page = AppPage.LIBRARY
                 }
             } catch (e: Exception) {
                 activity.runOnUiThread {
@@ -405,10 +408,10 @@ fun MusicAiScreen() {
                         label = { Text("Studio") }
                     )
                     NavigationBarItem(
-                        selected = page == AppPage.EDIT,
-                        onClick = { page = AppPage.EDIT },
-                        icon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                        label = { Text("Edit") }
+                        selected = page == AppPage.LIBRARY,
+                        onClick = { page = AppPage.LIBRARY },
+                        icon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                        label = { Text("Pustaka") }
                     )
                     NavigationBarItem(
                         selected = page == AppPage.SETTINGS,
@@ -536,7 +539,7 @@ fun MusicAiScreen() {
                         }
                         if (generatedTracks.isNotEmpty()) {
                             OutlinedButton(onClick = {
-                                page = AppPage.EDIT
+                                page = AppPage.LIBRARY
                                 selectTrack(0, false)
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Icon(Icons.Default.MusicNote, null)
@@ -546,96 +549,91 @@ fun MusicAiScreen() {
                         }
                     }
 
-                    AppPage.EDIT -> {
-                        Text("Edit lagu", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        OutlinedButton(
-                            onClick = { importAudioLauncher.launch(arrayOf("audio/*")) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                    AppPage.LIBRARY -> {
+                        Text("Pustaka musik", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text("Semua lagu buatan MusicAI dan audio lokal yang kamu impor.", color = Color.LightGray, fontSize = 13.sp)
+                        OutlinedButton(onClick = { importAudioLauncher.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Download, null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Impor lagu dari Google Flow")
+                            Text("Tambah lagu dari perangkat")
                         }
-                        if (importedFileName.isNotBlank()) {
-                            Text("File: $importedFileName", color = Color.LightGray, fontSize = 12.sp)
-                        }
-                        Text(
-                            "Impor lagu dari Google Flow, putar, simpan, atau edit detail proyek musikmu.",
-                            color = Color.LightGray, fontSize = 13.sp
-                        )
-                        OutlinedTextField(
-                            value = title, onValueChange = { title = it },
-                            label = { Text("Judul lagu") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = lyrics, onValueChange = { lyrics = it },
-                            label = { Text("Edit lirik") }, modifier = Modifier.fillMaxWidth().height(260.dp)
-                        )
-                        Text("Genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ")} • Vokal: ${when(vocal) { "female" -> "Wanita"; "duet" -> "Duet Pria + Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
-                        Text("Tempo: ${bpm.toInt()} BPM")
-                        Button(
-                            onClick = { generateSong() },
-                            enabled = !busy && lyrics.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (busy) "Membuat ulang..." else "Buat ulang dengan perubahan")
-                        }
-
-                        Text("Riwayat & hasil lagu", fontWeight = FontWeight.Bold)
-                        if (generatedTracks.isEmpty()) Text("Belum ada riwayat lagu. Hasil generasi akan tersimpan di perangkat ini.", color = Color.LightGray, fontSize = 12.sp)
-                        Text(status, color = Color.LightGray, fontSize = 13.sp)
-                        generatedTracks.forEachIndexed { index, track ->
-                            Surface(
-                                color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel,
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = { selectTrack(index, true) }
-                            ) {
-                                Box(Modifier.fillMaxWidth()) {
-                                    if (selectedTrackIndex == index && track.imageUrl != null) {
-                                        AsyncImage(model = track.imageUrl, contentDescription = null, modifier = Modifier.matchParentSize().blur(22.dp), contentScale = ContentScale.Crop)
-                                        Box(Modifier.matchParentSize().background(Color(0xAA171321)))
-                                    }
-                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    if (track.imageUrl != null) {
-                                        AsyncImage(model = track.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.size(68.dp), contentScale = ContentScale.Crop)
-                                    } else {
-                                        Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(68.dp)) {
-                                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(32.dp)) }
-                                        }
-                                    }
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("HASIL ${index + 1}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                        Text(track.durationSeconds?.let { formatTime((it * 1000).toInt()) } ?: "Suno track", color = Color.LightGray, fontSize = 11.sp)
-                                    }
-                                    if (selectedTrackIndex == index) Icon(Icons.Default.MusicNote, null, tint = accent)
-                                    else TextButton(onClick = { selectTrack(index, true) }) { Text("Putar") }
-                                    }
+                        Text("KOLEKSI • ${generatedTracks.size} LAGU", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        if (generatedTracks.isEmpty()) {
+                            Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(42.dp))
+                                    Text("Pustaka masih kosong", fontWeight = FontWeight.Bold)
+                                    Text("Buat lagu di Studio atau tambahkan audio dari perangkat.", color = Color.LightGray, fontSize = 12.sp)
                                 }
                             }
                         }
-                        Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Pemutar musik", fontWeight = FontWeight.Bold)
-                                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        generatedTracks.forEachIndexed { index, track ->
+                            Surface(color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), onClick = {
+                                selectTrack(index, false)
+                                page = AppPage.PLAYER
+                            }) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    if (track.imageUrl != null) AsyncImage(model = track.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.size(62.dp), contentScale = ContentScale.Crop)
+                                    else Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(62.dp)) {
+                                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(30.dp)) }
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                        Text(track.durationSeconds?.let { formatTime((it * 1000).toInt()) } ?: "Audio • tersimpan di perangkat", color = Color.LightGray, fontSize = 11.sp)
+                                    }
+                                    IconButton(onClick = { selectTrack(index, true); page = AppPage.PLAYER }) { Icon(Icons.Default.PlayArrow, "Putar lagu", tint = accent) }
+                                }
+                            }
+                        }
+                        Text(status, color = Color.LightGray, fontSize = 12.sp)
+                    }
+
+                    AppPage.PLAYER -> {
+                        TextButton(onClick = { page = AppPage.LIBRARY }) { Text("‹  Kembali ke Pustaka") }
+                        val currentTrack = generatedTracks.getOrNull(selectedTrackIndex)
+                        Text("SEDANG DIPUTAR", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Surface(color = Color(0xFF201A31), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                if (currentTrack?.imageUrl != null) {
+                                    AsyncImage(model = currentTrack.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentScale = ContentScale.Crop)
+                                } else {
+                                    Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Brush.linearGradient(listOf(Color(0xFF39245F), Color(0xFF101D32))), RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.MusicNote, null, tint = Color(0xFFD6C7FF), modifier = Modifier.size(112.dp))
+                                    }
+                                }
+                                Text(currentTrack?.title ?: title.ifBlank { "Belum ada lagu dipilih" }, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                                Text("MusicAI • Lagu", color = Color.LightGray, fontSize = 13.sp)
                                 Slider(value = playbackPosition.toFloat().coerceIn(0f, playbackDuration.coerceAtLeast(1).toFloat()), onValueChange = { seekTo(it.toInt()) }, valueRange = 0f..playbackDuration.coerceAtLeast(1).toFloat(), enabled = playbackDuration > 0)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(formatTime(playbackPosition), color = Color.LightGray, fontSize = 11.sp)
                                     Text(formatTime(playbackDuration), color = Color.LightGray, fontSize = 11.sp)
                                 }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { playPrevious() }, enabled = selectedTrackIndex > 0) { Icon(Icons.Default.SkipPrevious, "Lagu sebelumnya") }
-                                    IconButton(onClick = { togglePlayback() }, enabled = audioBytes != null) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", Modifier.size(38.dp)) }
-                                    IconButton(onClick = { playNext() }, enabled = selectedTrackIndex < generatedTracks.lastIndex) { Icon(Icons.Default.SkipNext, "Lagu selanjutnya") }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { playPrevious() }, enabled = selectedTrackIndex > 0) { Icon(Icons.Default.SkipPrevious, "Sebelumnya", modifier = Modifier.size(30.dp)) }
+                                    FilledIconButton(onClick = { togglePlayback() }, enabled = audioBytes != null, modifier = Modifier.size(68.dp)) {
+                                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Putar atau jeda", modifier = Modifier.size(38.dp))
+                                    }
+                                    IconButton(onClick = { playNext() }, enabled = selectedTrackIndex < generatedTracks.lastIndex) { Icon(Icons.Default.SkipNext, "Berikutnya", modifier = Modifier.size(30.dp)) }
                                 }
                                 Button(onClick = { saveAudio() }, enabled = audioBytes != null, modifier = Modifier.fillMaxWidth()) {
                                     Icon(Icons.Default.Download, null)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Unduh MP3")
+                                    Text("Unduh / simpan audio")
                                 }
                             }
                         }
+                        Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("MusicAI Player", fontWeight = FontWeight.SemiBold)
+                                    Text("Kontrol pemutaran lagu", color = Color.LightGray, fontSize = 11.sp)
+                                }
+                                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent)
+                            }
+                        }
+                        Text(status, color = Color.LightGray, fontSize = 12.sp)
                     }
 
                     AppPage.SETTINGS -> {
@@ -734,11 +732,11 @@ fun MusicAiScreen() {
                     }
                 }
 
-                if (page != AppPage.EDIT) {
+                if (page != AppPage.LIBRARY && page != AppPage.PLAYER) {
                     Text(status, color = Color.LightGray, fontSize = 12.sp)
                     if (audioBytes != null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = { page = AppPage.EDIT }, modifier = Modifier.weight(1f)) {
+                            OutlinedButton(onClick = { page = AppPage.LIBRARY }, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Default.Edit, null)
                                 Text("Edit hasil")
                             }
