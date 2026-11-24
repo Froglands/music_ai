@@ -458,27 +458,45 @@ fun MusicAiScreen() {
                             Text(if (busy) "Membuat ulang..." else "Buat ulang dengan perubahan")
                         }
 
-                        Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("Dua hasil generasi", fontWeight = FontWeight.Bold)
+                        Text(status, color = Color.LightGray, fontSize = 13.sp)
+                        generatedTracks.forEachIndexed { index, track ->
+                            Surface(
+                                color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { selectTrack(index, false) }
+                            ) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    AsyncImage(model = track.imageUrl, contentDescription = "Cover ${track.title}", modifier = Modifier.size(68.dp), contentScale = ContentScale.Crop)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("HASIL ${index + 1}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                        Text(track.durationSeconds?.let { formatTime((it * 1000).toInt()) } ?: "Suno track", color = Color.LightGray, fontSize = 11.sp)
+                                    }
+                                    if (selectedTrackIndex == index) Icon(Icons.Default.MusicNote, null, tint = accent)
+                                    else TextButton(onClick = { selectTrack(index, false) }) { Text("Pilih") }
+                                }
+                            }
+                        }
+                        Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Hasil lagu", fontWeight = FontWeight.Bold)
-                                Text(status, color = Color.LightGray, fontSize = 13.sp)
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    OutlinedButton(
-                                        onClick = { playAudio() },
-                                        enabled = audioBytes != null,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.PlayArrow, null)
-                                        Text("Putar")
-                                    }
-                                    Button(
-                                        onClick = { saveAudio() },
-                                        enabled = audioBytes != null,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.Download, null)
-                                        Text("Unduh MP3")
-                                    }
+                                Text("Pemutar musik", fontWeight = FontWeight.Bold)
+                                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Slider(value = playbackPosition.toFloat().coerceIn(0f, playbackDuration.coerceAtLeast(1).toFloat()), onValueChange = { seekTo(it.toInt()) }, valueRange = 0f..playbackDuration.coerceAtLeast(1).toFloat(), enabled = playbackDuration > 0)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(formatTime(playbackPosition), color = Color.LightGray, fontSize = 11.sp)
+                                    Text(formatTime(playbackDuration), color = Color.LightGray, fontSize = 11.sp)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { playPrevious() }, enabled = selectedTrackIndex > 0) { Icon(Icons.Default.SkipPrevious, "Lagu sebelumnya") }
+                                    IconButton(onClick = { togglePlayback() }, enabled = audioBytes != null) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", Modifier.size(38.dp)) }
+                                    IconButton(onClick = { playNext() }, enabled = selectedTrackIndex < generatedTracks.lastIndex) { Icon(Icons.Default.SkipNext, "Lagu selanjutnya") }
+                                }
+                                Button(onClick = { saveAudio() }, enabled = audioBytes != null, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.Download, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Unduh MP3")
                                 }
                             }
                         }
