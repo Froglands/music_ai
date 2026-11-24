@@ -348,7 +348,7 @@ fun MusicAiScreen() {
     fun selectTrack(index: Int, autoplay: Boolean = false) {
         if (index !in generatedTracks.indices) return
         if (index == selectedTrackIndex && player != null) {
-            if (autoplay && !isPlaying) togglePlayback()
+            if (autoplay && !isPlaying) { player?.start(); isPlaying = true }
             return
         }
         selectedTrackIndex = index
