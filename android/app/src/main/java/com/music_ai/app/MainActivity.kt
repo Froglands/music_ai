@@ -193,6 +193,8 @@ fun MusicAiScreen() {
     var developerVerifying by remember { mutableStateOf(false) }
     var developerMessage by remember { mutableStateOf("") }
     var developerApiKey by remember { mutableStateOf(loadDeveloperApiKey(context)) }
+    var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
+    var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
     var apiKeyVisible by remember { mutableStateOf(false) }
     var backendUrl by remember {
         val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
@@ -514,6 +516,20 @@ fun MusicAiScreen() {
                 dismissButton = { TextButton(onClick = { selectedGenres = emptySet(); customGenre = "" }) { Text("Reset") } }
             )
         }
+        if (showLyriaCostConfirm) {
+            AlertDialog(
+                onDismissRequest = { showLyriaCostConfirm = false },
+                title = { Text("Konfirmasi biaya Lyria") },
+                text = { Text("Google Lyria 3.5 mengenakan biaya sekitar US$0,08 (± Rp1.336) untuk satu lagu penuh. Biaya aktual mengikuti kurs dan pajak. Lanjutkan generasi?") },
+                confirmButton = {
+                    TextButton(onClick = { showLyriaCostConfirm = false; generateSong() }) { Text("Lanjut • ± Rp1.336") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLyriaCostConfirm = false }) { Text("Batal") }
+                },
+                containerColor = Color(0xFF211A32)
+            )
+        }
         if (trackToDelete >= 0 && trackToDelete < generatedTracks.size) {
             AlertDialog(
                 onDismissRequest = { trackToDelete = -1 },
@@ -658,7 +674,7 @@ fun MusicAiScreen() {
                         OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth())
 
                         Button(
-                            onClick = { generateSong() },
+                            onClick = { if (selectedProvider == "lyria") showLyriaCostConfirm = true else generateSong() },
                             enabled = !busy && lyrics.isNotBlank(),
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp)
@@ -863,6 +879,27 @@ fun MusicAiScreen() {
                                     singleLine = true
                                 )
                                 Divider(color = Color(0x665F5477))
+                                Divider(color = Color(0x665F5477))
+                                Text("PROVIDER GENERASI", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = selectedProvider == "musicapi",
+                                        onClick = {
+                                            selectedProvider = "musicapi"
+                                            context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply()
+                                        },
+                                        label = { Text("MusicAPI / Suno") }
+                                    )
+                                    FilterChip(
+                                        selected = selectedProvider == "lyria",
+                                        onClick = {
+                                            selectedProvider = "lyria"
+                                            context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "lyria").apply()
+                                        },
+                                        label = { Text("Google Lyria 3.5") }
+                                    )
+                                }
+                                Text("Provider yang dipilih dipakai saat membuat lagu. Pilihan dan seluruh pengaturan pengembang tetap tersimpan.", color = Color.LightGray, fontSize = 11.sp)
                                 Text("API KEY MUSICAPI • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Text("Ganti key kapan saja tanpa mengubah environment variable Vercel. Key tersimpan terenkripsi di perangkat ini.", color = Color.LightGray, fontSize = 12.sp)
                                 OutlinedTextField(
@@ -893,6 +930,37 @@ fun MusicAiScreen() {
                                         },
                                         modifier = Modifier.weight(1f)
                                     ) { Text("Hapus / Reset") }
+                                }
+                                Divider(color = Color(0x665F5477))
+                                Text("GOOGLE LYRIA 3.5 • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("Masukkan Gemini API key dari Google AI Studio. Key disimpan terenkripsi di perangkat dan hanya dikirim ketika provider Lyria dipilih. Alternatifnya, atur GEMINI_API_KEY di Vercel.", color = Color.LightGray, fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = developerLyriaApiKey,
+                                    onValueChange = { developerLyriaApiKey = it },
+                                    label = { Text("Gemini API key • Lyria") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    visualTransformation = if (apiKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        TextButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Text(if (apiKeyVisible) "Sembunyikan" else "Lihat") }
+                                    }
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            saveDeveloperApiKey(context, developerLyriaApiKey.trim(), "lyria")
+                                            developerMessage = if (developerLyriaApiKey.isBlank()) "API key Lyria lokal dihapus." else "API key Lyria tersimpan terenkripsi."
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Simpan key Lyria") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            developerLyriaApiKey = ""
+                                            saveDeveloperApiKey(context, "", "lyria")
+                                            developerMessage = "API key Lyria lokal dihapus. Backend akan memakai GEMINI_API_KEY jika tersedia."
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Hapus key") }
                                 }
                                 OutlinedButton(
                                     onClick = {
