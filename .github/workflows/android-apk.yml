@@ -1,9 +1,14 @@
-name: Build NadaAI Android APK
+name: Build MusicAI Android APK
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [ "main" ]
+  push:
+    branches: [ "main", "feat/musicai-editor-settings-build" ]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -11,25 +16,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
+      # Empty packages avoids the deprecated "tools" package that breaks setup-android.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        with:
+          packages: ""
+
+      - name: Install Android SDK packages
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
       - name: Build debug APK
         working-directory: android
-        run: gradle assembleDebug
+        run: gradle --no-daemon assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NadaAI-debug-apk
+          name: MusicAI-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14

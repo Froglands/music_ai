@@ -1,52 +1,57 @@
-# NadaAI — Android AI Music Studio
+# MusicAI — Android AI Music Studio
 
-Starter project: native Android (Kotlin + Jetpack Compose) + Node.js backend + GitHub Actions cloud APK build.
+Native Android app (Kotlin + Jetpack Compose) with a Node.js backend for ElevenLabs Music generation.
 
-## Architecture
-- `android/`: Android app. Sends song settings and lyrics to the backend, receives MP3 bytes, plays them and saves to Downloads.
-- `backend/`: Express server. Keeps `ELEVENLABS_API_KEY` on the server and calls ElevenLabs Music API.
-- `.github/workflows/android-apk.yml`: builds a debug APK in GitHub Actions.
+## Project layout
+- `android/`: Android application.
+- `backend/`: Express API. The ElevenLabs key stays on the server.
+- `.github/workflows/android-apk.yml`: GitHub Actions debug APK build.
+- `render.yaml`: Render service configuration for the backend.
 
-## Important limitations
-- Tempo/BPM is a musical direction prompt, not a guaranteed exact BPM control in the current Music API.
-- Male/female vocal selection is expressed as a composition style instruction; the model may not always obey perfectly.
-- This starter uses `music_v2_5` composition plans. Confirm model availability and account access in your ElevenLabs account.
-- Generation consumes ElevenLabs credits. Do not expose the API key in the Android app.
-- First version has no user accounts or persistent cloud song library. Audio is downloaded to the device; backend does not store it.
+## App features
+- Create a song from a title, lyrics, genre, vocal direction, BPM direction, and mood.
+- Edit the title and lyrics after generation, then regenerate the track.
+- Preview generated MP3 audio and save it to `Music/MusicAI`.
+- Settings page lets you enter and save the backend HTTPS URL, then test its health.
 
-## 1. Set up backend (Render, Railway, Fly.io, or any Node host)
-1. Create a new GitHub repository and upload this project.
-2. Deploy the `backend/` folder as a Node.js web service (Render example: Root Directory `backend`, Build Command `npm install`, Start Command `npm start`).
-3. Set environment variables on the hosting provider:
-   - `ELEVENLABS_API_KEY` = your ElevenLabs API key
-   - `PORT` = usually supplied automatically by the host
-   - `ALLOWED_ORIGIN` = `*` for initial testing (tighten later)
-4. Deploy and test: open `https://YOUR-BACKEND/health`. It should return `{"ok":true,"service":"nadaai-backend"}`.
+## Important: configure the backend before generating songs
+The Android app stores the backend HTTPS URL locally from **Pengaturan**. Enter the deployed service URL in the app; no APK rebuild is needed when the URL changes.
 
-Do not paste your API key into source code, GitHub commits, screenshots, or this chat.
+Deploy the `backend/` directory as a Node.js web service. On Render, use:
+- Root directory: `backend`
+- Build command: `npm install`
+- Start command: `npm start`
+- Health check path: `/health`
 
-## 2. Configure Android backend URL
-Open `android/app/src/main/java/com/nadaai/app/MainActivity.kt` and replace:
-`https://YOUR-BACKEND.example`
-with the deployed backend URL. Do not include a trailing slash.
+Set `ELEVENLABS_API_KEY` as a secret environment variable in the hosting provider. Do not put the key in Android code, Git, screenshots, or this README. `ALLOWED_ORIGIN=*` is suitable only for initial testing; restrict it before public release.
 
-## 3. Build APK in the cloud
-1. Push the repository to GitHub.
-2. Open the repository → Actions.
-3. Run **Build NadaAI Android APK** (or push to `main`).
-4. Download the `NadaAI-debug-apk` artifact from the completed workflow.
+Open `https://YOUR-BACKEND/health`. A healthy service returns JSON with `ok: true`.
 
-## 4. Local build (optional)
-Open `android/` in Android Studio and build the `app` module.
+## Android package
+The application ID and Kotlin namespace are `com.music_ai.app`. The launcher name is `MusicAI`.
 
-## Current API flow
-Android POSTs JSON to `/api/generate`. Backend validates inputs, turns the lyric sections into Music v2.5 composition-plan chunks, and calls:
-`POST https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192`
+## Build the APK with GitHub Actions
+1. Open the repository's **Actions** tab.
+2. Select **Build MusicAI Android APK**.
+3. Run the workflow on the branch you want to build, or push/merge a change.
+4. Open the completed run and download the `MusicAI-debug-apk` artifact.
+5. Extract the ZIP; install `app-debug.apk` on the Android device.
 
-The backend returns MP3 bytes with `Content-Type: audio/mpeg`.
+The workflow builds a debug APK. It is suitable for testing, not a signed Play Store release.
 
-## Next milestones
-- Add secure per-user authentication and quotas before public release.
-- Add server-side generation job tracking and cloud history if desired.
-- Add a proper download/share screen and generation cancellation.
-- Add account/credit display only through a supported authenticated endpoint; never guess remaining credits.
+## Local build
+Open the `android/` folder in Android Studio and run the `app` configuration, or run:
+
+```bash
+cd android
+gradle assembleDebug
+```
+
+## API notes
+- The backend accepts `POST /api/generate` and returns MP3 bytes.
+- Music generation uses ElevenLabs credits and requires account/model access.
+- BPM and vocal gender are sent as creative directions; the generated model is not guaranteed to follow them exactly.
+- The backend currently does not store a song library or provide user accounts.
+
+## Before public launch
+Add authentication, per-user quotas, abuse protection, restricted CORS origins, request/job tracking, and a signed release build.
