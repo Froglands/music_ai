@@ -76,7 +76,9 @@ fun MusicAiScreen() {
     var page by remember { mutableStateOf(AppPage.STUDIO) }
     var title by remember { mutableStateOf("") }
     var lyrics by remember { mutableStateOf("") }
-    var genre by remember { mutableStateOf("Dangdut Koplo") }
+    var selectedGenres by remember { mutableStateOf(setOf("Dangdut Koplo")) }
+    var customGenre by remember { mutableStateOf("") }
+    var showGenreDialog by remember { mutableStateOf(false) }
     var vocal by remember { mutableStateOf("female") }
     var bpm by remember { mutableFloatStateOf(110f) }
     var durationSeconds by remember { mutableIntStateOf(120) }
@@ -142,7 +144,7 @@ fun MusicAiScreen() {
                     put("title", title.trim())
                     put("lyrics", lyrics)
                     put("inputMode", "auto")
-                    put("genre", genre)
+                    put("genre", (selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { "Pop" })
                     put("vocal", vocal)
                     put("instrumental", vocal == "instrumental")
                     put("bpm", bpm.toInt())
@@ -382,19 +384,20 @@ fun MusicAiScreen() {
                             placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nPetunjuk ini akan hilang saat kamu mulai mengetik.") }
                         )
 
-                        Text("Genre musik", fontWeight = FontWeight.SemiBold)
-                        var genreExpanded by remember { mutableStateOf(false) }
-                        Box {
-                            OutlinedButton(onClick = { genreExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text(genre, modifier = Modifier.weight(1f))
-                                Text("⌄")
-                            }
-                            DropdownMenu(expanded = genreExpanded, onDismissRequest = { genreExpanded = false }) {
-                                genres.forEach { item ->
-                                    DropdownMenuItem(
-                                        text = { Text(item) },
-                                        onClick = { genre = item; genreExpanded = false }
-                                    )
+                        Surface(color = Color(0x442D2544), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66C4ADFF)), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("GENRE MUSIK", color = Color(0xFFD5C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp)
+                                        Text(if (selectedGenres.isEmpty() && customGenre.isBlank()) "Pilih satu atau beberapa genre" else (selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString("  •  "), color = Color.White, fontSize = 13.sp, maxLines = 2)
+                                    }
+                                    TextButton(onClick = { showGenreDialog = true }) { Text("Ubah") }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    (selectedGenres.toList().take(2) + listOf(customGenre.trim()).filter { it.isNotBlank() }.take(1)).forEach { selected ->
+                                        Surface(color = Color(0xFF8B6CE0).copy(alpha = 0.28f), shape = RoundedCornerShape(50), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88C6B4FF))) { Text(selected, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color(0xFFE5DBFF), fontSize = 11.sp) }
+                                    }
+                                    TextButton(onClick = { showGenreDialog = true }) { Text("+ Tambah") }
                                 }
                             }
                         }
@@ -482,7 +485,7 @@ fun MusicAiScreen() {
                             value = lyrics, onValueChange = { lyrics = it },
                             label = { Text("Edit lirik") }, modifier = Modifier.fillMaxWidth().height(260.dp)
                         )
-                        Text("Genre: $genre • Vokal: ${when(vocal) { "female" -> "Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
+                        Text("Genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ")} • Vokal: ${when(vocal) { "female" -> "Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
                         Text("Tempo: ${bpm.toInt()} BPM")
                         Button(
                             onClick = { generateSong() },
