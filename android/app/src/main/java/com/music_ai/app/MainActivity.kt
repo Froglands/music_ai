@@ -538,13 +538,19 @@ fun MusicAiScreen() {
                             else Text("CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
                         }
                         if (generatedTracks.isNotEmpty()) {
-                            OutlinedButton(onClick = {
-                                page = AppPage.LIBRARY
-                                selectTrack(0, false)
-                            }, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Default.MusicNote, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Buka riwayat lagu • ${generatedTracks.size} track")
+                            Text("LAGU TERBARU", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            generatedTracks.takeLast(3).asReversed().forEach { track ->
+                                val trackIndex = generatedTracks.indexOf(track)
+                                Surface(color = panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(), onClick = { selectTrack(trackIndex, false); page = AppPage.PLAYER }) {
+                                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
+                                        Text(track.title, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                        IconButton(onClick = { selectTrack(trackIndex, true); page = AppPage.PLAYER }) { Icon(Icons.Default.PlayArrow, "Putar") }
+                                    }
+                                }
+                            }
+                            OutlinedButton(onClick = { page = AppPage.LIBRARY }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Buka Pustaka • ${generatedTracks.size} lagu")
                             }
                         }
                     }
