@@ -47,7 +47,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
-        custom_mode: !instrumental && inputMode === "lyrics",
+        custom_mode: !instrumental,
         mv: "sonic-v5-5",
         ...(title ? { title } : {}),
         ...(instrumental
