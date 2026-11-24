@@ -88,12 +88,11 @@ app.get("/api/job/:id", async (req, res) => {
     }
 
     const songs = Array.isArray(payload.data) ? payload.data : [];
-    const firstState = songs[0]?.state;
-    const state = firstState === "succeeded" || songs.length > 0 && songs.every(song => song.state === "succeeded")
-      ? "completed"
-      : firstState === "failed" || payload.status === "failed" || songs.some(song => song.state === "failed")
-        ? "failed"
-        : songs.length > 0 && songs.every(song => song.state === "running")
+    const state = payload.status === "failed" || songs.some(song => song.state === "failed")
+      ? "failed"
+      : songs.length > 0 && songs.every(song => song.state === "succeeded")
+        ? "completed"
+        : songs.some(song => song.state === "running")
           ? "running"
           : "pending";
 
