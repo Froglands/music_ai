@@ -31,7 +31,8 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   const genre = cleanString(req.body?.genre, 100) || "Pop";
   const mood = cleanString(req.body?.mood, 200) || "uplifting and melodic";
   const instrumental = req.body?.instrumental === true || req.body?.vocal === "instrumental";
-  const inputMode = req.body?.inputMode === "prompt" ? "prompt" : "lyrics";
+  const hasLyricsStructure = /\[(verse|chorus|bridge|intro|outro|pre-chorus)/i.test(lyrics) || lyrics.split(/\r?\n/).filter(line => line.trim()).length >= 5;
+  const inputMode = req.body?.inputMode === "prompt" || req.body?.inputMode === "auto" && !hasLyricsStructure ? "prompt" : "lyrics";
   const vocal = req.body?.vocal === "male" ? "m" : "f";
   const duration = Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
@@ -46,7 +47,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
-        custom_mode: true,
+        custom_mode: !instrumental && inputMode === "lyrics",
         mv: "sonic-v5-5",
         ...(title ? { title } : {}),
         ...(instrumental
