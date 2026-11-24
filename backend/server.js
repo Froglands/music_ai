@@ -112,7 +112,7 @@ app.get("/api/job/:id", async (req, res) => {
 
   try {
     const response = await fetch(`https://api.musicapi.ai/api/v1/sonic/task/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${activeApiKey}`, Accept: "application/json" },
       signal: AbortSignal.timeout(20_000)
     });
     const payload = await response.json().catch(() => ({}));
