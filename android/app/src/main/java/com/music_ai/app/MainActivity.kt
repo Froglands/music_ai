@@ -421,22 +421,6 @@ fun MusicAiScreen() {
                     }
                 }
 
-                for (index in 0 until tracks.length()) {
-                    val track = tracks.getJSONObject(index)
-                    val audioUrl = track.optString("audioUrl")
-                    if (!audioUrl.startsWith("https://")) continue
-                    val bytes = client.newCall(Request.Builder().url(audioUrl).get().build()).execute().use { response ->
-                        if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh hasil ${index + 1} (${response.code}).")
-                        response.body?.bytes() ?: throw IllegalStateException("Audio hasil ${index + 1} kosong.")
-                    }
-                    if (bytes.isNotEmpty()) downloaded.add(MusicTrack(
-                        title = track.optString("title", "$title - Hasil ${index + 1}").ifBlank { "$title - Hasil ${index + 1}" },
-                        audioBytes = bytes,
-                        imageUrl = track.optString("imageUrl").takeIf { it.startsWith("https://") },
-                        durationSeconds = if (track.has("duration")) track.optDouble("duration").toFloat() else null,
-                        isAiGenerated = true
-                    ))
-                }
                 if (downloaded.isEmpty()) throw IllegalStateException("Suno selesai tetapi audio tidak bisa diunduh.")
                 activity.runOnUiThread {
                     val firstNewTrack = generatedTracks.size
