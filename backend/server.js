@@ -45,13 +45,14 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
-        custom_mode: true,
+        custom_mode: !instrumental,
         mv: "sonic-v5-5",
         title,
-        prompt: instrumental ? "Instrumental music, no vocals, no lyrics. " + tags : lyrics,
+        ...(instrumental
+          ? { make_instrumental: true, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + tags }
+          : { prompt: lyrics, vocal_gender: vocal }),
         tags,
-        duration,
-        ...(instrumental ? { make_instrumental: true } : { vocal_gender: vocal })
+        duration
       }),
       signal: AbortSignal.timeout(30_000)
     });
