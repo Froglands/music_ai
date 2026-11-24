@@ -323,6 +323,27 @@ fun MusicAiScreen() {
         background = bg, surface = panel, primary = accent,
         onBackground = Color.White, onSurface = Color.White
     )) {
+        if (showGenreDialog) {
+            AlertDialog(
+                onDismissRequest = { showGenreDialog = false },
+                containerColor = Color(0xFF211A32),
+                title = { Text("Pilih genre", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Bisa pilih beberapa genre sekaligus.", color = Color(0xFFBFB5D2), fontSize = 12.sp)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            genres.forEach { item ->
+                                FilterChip(selected = item in selectedGenres, onClick = { selectedGenres = if (item in selectedGenres) selectedGenres - item else selectedGenres + item }, label = { Text(item, fontSize = 12.sp) })
+                            }
+                        }
+                        Divider(color = Color(0x55B69BFF))
+                        OutlinedTextField(value = customGenre, onValueChange = { customGenre = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Genre sendiri") }, placeholder = { Text("Contoh: ska reggae punk Sunda") }, singleLine = true)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showGenreDialog = false }) { Text("Selesai") } },
+                dismissButton = { TextButton(onClick = { selectedGenres = emptySet(); customGenre = "" }) { Text("Reset") } }
+            )
+        }
         Scaffold(
             containerColor = bg,
             bottomBar = {
