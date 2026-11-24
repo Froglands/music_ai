@@ -2,6 +2,7 @@ package com.music_ai.app
 
 import android.content.ContentValues
 import android.media.MediaPlayer
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
@@ -50,7 +51,7 @@ import java.util.concurrent.TimeUnit
 
 private enum class AppPage { STUDIO, LIBRARY, PLAYER, SETTINGS }
 
-private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null)
+private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null, val coverFileName: String? = null, val artist: String? = null)
 
 private fun loadMusicHistory(context: android.content.Context): List<MusicTrack> {
     val prefs = context.getSharedPreferences("musicai_history", android.content.Context.MODE_PRIVATE)
@@ -65,7 +66,9 @@ private fun loadMusicHistory(context: android.content.Context): List<MusicTrack>
             runCatching {
                 add(MusicTrack(item.optString("title", "MusicAI"), file.readBytes(),
                     item.optString("imageUrl").takeIf { it.startsWith("https://") },
-                    if (item.has("duration")) item.optDouble("duration").toFloat() else null, fileName))
+                    if (item.has("duration")) item.optDouble("duration").toFloat() else null, fileName,
+                    item.optString("coverFileName").takeIf { it.isNotBlank() },
+                    item.optString("artist").takeIf { it.isNotBlank() }))
             }
         }
     }
@@ -76,7 +79,8 @@ private fun saveMusicHistory(context: android.content.Context, tracks: List<Musi
     val saved = tracks.mapIndexed { index, track ->
         val name = track.fileName ?: "track_${System.currentTimeMillis()}_${index}.mp3"
         java.io.File(folder, name).writeBytes(track.audioBytes)
-        track.copy(fileName = name)
+        val coverName = track.coverFileName ?: if (track.imageUrl == null && track.coverFileName == null) null else track.coverFileName
+        track.copy(fileName = name, coverFileName = coverName)
     }
     val records = org.json.JSONArray()
     saved.forEach { track ->
@@ -84,6 +88,8 @@ private fun saveMusicHistory(context: android.content.Context, tracks: List<Musi
             put("title", track.title)
             put("fileName", track.fileName)
             put("imageUrl", track.imageUrl ?: "")
+            put("coverFileName", track.coverFileName ?: "")
+            put("artist", track.artist ?: "")
             track.durationSeconds?.let { put("duration", it.toDouble()) }
         })
     }
@@ -159,8 +165,28 @@ fun MusicAiScreen() {
                 if (bytes.isEmpty()) throw IllegalStateException("File audio kosong.")
                 val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
                 val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Flow Music"
-                val importedTitle = name.substringBeforeLast('.', name).ifBlank { "Lagu lokal" }
-                generatedTracks = saveMusicHistory(context, generatedTracks + MusicTrack(importedTitle, bytes))
+                var importedTitle = name.substringBeforeLast('.', name).ifBlank { "Lagu lokal" }
+                var importedArtist: String? = null
+                var importedDuration: Float? = null
+                var coverName: String? = null
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, uri)
+                    importedTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() } ?: importedTitle
+                    importedArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                        ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+                    importedDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toFloatOrNull()?.div(1000f)
+                    val picture = retriever.embeddedPicture
+                    if (picture != null && picture.isNotEmpty()) {
+                        val coverDir = java.io.File(context.filesDir, "music_covers").apply { mkdirs() }
+                        coverName = "cover_${System.currentTimeMillis()}.jpg"
+                        java.io.File(coverDir, coverName!!).writeBytes(picture)
+                    }
+                } finally {
+                    runCatching { retriever.release() }
+                }
+                val importedTrack = MusicTrack(importedTitle, bytes, durationSeconds = importedDuration, coverFileName = coverName, artist = importedArtist)
+                generatedTracks = saveMusicHistory(context, generatedTracks + importedTrack)
                 selectedTrackIndex = generatedTracks.lastIndex
                 audioBytes = bytes
                 audioMimeType = mime
@@ -579,13 +605,14 @@ fun MusicAiScreen() {
                                 page = AppPage.PLAYER
                             }) {
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    if (track.imageUrl != null) AsyncImage(model = track.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.size(62.dp), contentScale = ContentScale.Crop)
+                                    val localCover = track.coverFileName?.let { java.io.File(java.io.File(context.filesDir, "music_covers"), it) }?.takeIf { it.exists() }
+                                    if (track.imageUrl != null || localCover != null) AsyncImage(model = track.imageUrl ?: localCover, contentDescription = "Cover lagu", modifier = Modifier.size(62.dp), contentScale = ContentScale.Crop)
                                     else Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(12.dp), modifier = Modifier.size(62.dp)) {
                                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(30.dp)) }
                                     }
                                     Column(Modifier.weight(1f)) {
                                         Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                        Text(track.durationSeconds?.let { formatTime((it * 1000).toInt()) } ?: "Audio • tersimpan di perangkat", color = Color.LightGray, fontSize = 11.sp)
+                                        Text(listOfNotNull(track.artist, track.durationSeconds?.let { formatTime((it * 1000).toInt()) }).joinToString(" • ").ifBlank { "Audio • tersimpan di perangkat" }, color = Color.LightGray, fontSize = 11.sp)
                                     }
                                     IconButton(onClick = { selectTrack(index, true); page = AppPage.PLAYER }) { Icon(Icons.Default.PlayArrow, "Putar lagu", tint = accent) }
                                 }
@@ -600,15 +627,16 @@ fun MusicAiScreen() {
                         Text("SEDANG DIPUTAR", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Surface(color = Color(0xFF201A31), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                if (currentTrack?.imageUrl != null) {
-                                    AsyncImage(model = currentTrack.imageUrl, contentDescription = "Cover lagu", modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentScale = ContentScale.Crop)
+                                val playerCover = currentTrack?.coverFileName?.let { java.io.File(java.io.File(context.filesDir, "music_covers"), it) }?.takeIf { it.exists() }
+                                if (currentTrack?.imageUrl != null || playerCover != null) {
+                                    AsyncImage(model = currentTrack?.imageUrl ?: playerCover, contentDescription = "Cover lagu", modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentScale = ContentScale.Crop)
                                 } else {
                                     Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Brush.linearGradient(listOf(Color(0xFF39245F), Color(0xFF101D32))), RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.MusicNote, null, tint = Color(0xFFD6C7FF), modifier = Modifier.size(112.dp))
                                     }
                                 }
                                 Text(currentTrack?.title ?: title.ifBlank { "Belum ada lagu dipilih" }, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-                                Text("MusicAI • Lagu", color = Color.LightGray, fontSize = 13.sp)
+                                Text(currentTrack?.artist?.takeIf { it.isNotBlank() } ?: "MusicAI • Lagu", color = Color.LightGray, fontSize = 13.sp)
                                 Slider(value = playbackPosition.toFloat().coerceIn(0f, playbackDuration.coerceAtLeast(1).toFloat()), onValueChange = { seekTo(it.toInt()) }, valueRange = 0f..playbackDuration.coerceAtLeast(1).toFloat(), enabled = playbackDuration > 0)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(formatTime(playbackPosition), color = Color.LightGray, fontSize = 11.sp)
@@ -740,19 +768,7 @@ fun MusicAiScreen() {
 
                 if (page != AppPage.LIBRARY && page != AppPage.PLAYER) {
                     Text(status, color = Color.LightGray, fontSize = 12.sp)
-                    if (audioBytes != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = { page = AppPage.LIBRARY }, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Edit, null)
-                                Text("Edit hasil")
-                            }
-                            Button(onClick = { saveAudio() }, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Download, null)
-                                Text("Unduh MP3")
-                            }
-                        }
-                        }
-                    }
+                }
                 Text("MusicAI • Flow Music companion", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
         }
