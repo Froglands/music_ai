@@ -93,7 +93,7 @@ async function generateLyria(req, res) {
       method: "POST",
       headers: { "x-goog-api-key": activeKey, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "lyria-3.5", input: prompt, store: false }),
-      signal: AbortSignal.timeout(540_000)
+      signal: AbortSignal.timeout(55_000)
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
