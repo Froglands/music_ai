@@ -238,7 +238,7 @@ fun MusicAiScreen() {
                 playbackPosition = 0
                 setOnCompletionListener {
                     isPlaying = false
-                    if (selectedTrackIndex < generatedTracks.lastIndex) activity.runOnUiThread { selectTrack((selectedTrackIndex + 1).coerceAtMost(generatedTracks.lastIndex), true) }
+                    if (selectedTrackIndex < generatedTracks.lastIndex) activity.runOnUiThread { selectedTrackIndex += 1; audioBytes = generatedTracks[selectedTrackIndex].audioBytes; title = generatedTracks[selectedTrackIndex].title; playbackPosition = 0; playAudio() }
                     else playbackPosition = playbackDuration
                 }
             }
