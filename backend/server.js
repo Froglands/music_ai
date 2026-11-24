@@ -30,10 +30,12 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   const lyrics = cleanString(req.body?.lyrics, 5000);
   const genre = cleanString(req.body?.genre, 100) || "Pop";
   const mood = cleanString(req.body?.mood, 200) || "uplifting and melodic";
+  const instrumental = req.body?.instrumental === true || req.body?.vocal === "instrumental";
   const vocal = req.body?.vocal === "male" ? "m" : "f";
+  const duration = Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
 
-  if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
+  if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
 
   const tags = [genre, mood, `${bpm} BPM`].join(", ");
@@ -44,11 +46,12 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       body: JSON.stringify({
         task_type: "create_music",
         custom_mode: true,
-        mv: "sonic-v4-5",
+        mv: "sonic-v5-5",
         title,
-        prompt: lyrics,
+        prompt: instrumental ? "Instrumental music, no vocals, no lyrics. " + tags : lyrics,
         tags,
-        vocal_gender: vocal
+        duration,
+        ...(instrumental ? { make_instrumental: true } : { vocal_gender: vocal })
       }),
       signal: AbortSignal.timeout(30_000)
     });
