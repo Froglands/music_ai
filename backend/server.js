@@ -59,7 +59,10 @@ app.post("/api/generate", async (req, res) => {
 
     const start = await fetch("https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "audio/*, application/json"
+      },
       body: form,
       signal: AbortSignal.timeout(20_000)
     });
@@ -67,13 +70,18 @@ app.post("/api/generate", async (req, res) => {
     if (!start.ok) {
       const detail = await start.text();
       console.error("Stability start error:", start.status, detail.slice(0, 1500));
-      const status = start.status === 401 ? 401 : start.status === 402 ? 402 : start.status === 429 ? 429 : 502;
+      const status = [400, 401, 402, 403, 413, 422, 429].includes(start.status) ? start.status : 502;
+      let detailMessage = "Stability AI gagal menerima permintaan.";
+      try {
+        const parsed = JSON.parse(detail);
+        if (Array.isArray(parsed.errors) && parsed.errors.length) detailMessage = parsed.errors.join(" ");
+      } catch {}
       return res.status(status).json({
         error: start.status === 401 ? "API Key Stability AI tidak valid." :
           start.status === 402 ? "Kredit Stability AI tidak mencukupi." :
           start.status === 403 ? "Prompt ditolak sistem moderasi Stability AI." :
           start.status === 429 ? "Batas permintaan Stability AI tercapai. Coba lagi nanti." :
-          "Stability AI gagal menerima permintaan. Periksa parameter dan akun."
+          detailMessage
       });
     }
 
