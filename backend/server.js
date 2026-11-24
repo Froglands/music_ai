@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import { timingSafeEqual } from "node:crypto";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.MUSICAPI_API_KEY;
+const devAccessCode = process.env.MUSICAI_DEV_ACCESS_CODE;
 
 app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
@@ -13,6 +15,16 @@ const generationLimiter = rateLimit({ windowMs: 60_000, limit: 3, standardHeader
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "musicai-backend", provider: "musicapi-sonic" });
+});
+
+const devVerifyLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false });
+app.post("/api/dev/verify", devVerifyLimiter, (req, res) => {
+  if (!devAccessCode) return res.status(503).json({ authorized: false, error: "Developer access is not configured." });
+  const submitted = typeof req.body?.code === "string" ? req.body.code : "";
+  const expected = Buffer.from(devAccessCode);
+  const received = Buffer.from(submitted);
+  const authorized = expected.length === received.length && timingSafeEqual(expected, received);
+  return res.status(authorized ? 200 : 401).json({ authorized });
 });
 
 function cleanString(value, max) {
