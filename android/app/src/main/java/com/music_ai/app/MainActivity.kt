@@ -185,19 +185,30 @@ fun MusicAiScreen() {
                 }
                 val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
                 if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
-                val firstTrack = tracks.getJSONObject(0)
-                val audioUrl = firstTrack.optString("audioUrl")
-                if (!audioUrl.startsWith("https://")) throw IllegalStateException("URL audio dari penyedia tidak valid.")
-                val audioRequest = Request.Builder().url(audioUrl).get().build()
-                val bytes = client.newCall(audioRequest).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh audio (${response.code}).")
-                    response.body?.bytes() ?: throw IllegalStateException("Audio kosong.")
+                val downloaded = mutableListOf<MusicTrack>()
+                for (index in 0 until tracks.length()) {
+                    val track = tracks.getJSONObject(index)
+                    val audioUrl = track.optString("audioUrl")
+                    if (!audioUrl.startsWith("https://")) continue
+                    val bytes = client.newCall(Request.Builder().url(audioUrl).get().build()).execute().use { response ->
+                        if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh hasil ${index + 1} (${response.code}).")
+                        response.body?.bytes() ?: throw IllegalStateException("Audio hasil ${index + 1} kosong.")
+                    }
+                    if (bytes.isNotEmpty()) downloaded.add(MusicTrack(
+                        title = track.optString("title", "$title - Hasil ${index + 1}").ifBlank { "$title - Hasil ${index + 1}" },
+                        audioBytes = bytes,
+                        imageUrl = track.optString("imageUrl").takeIf { it.startsWith("https://") },
+                        durationSeconds = if (track.has("duration")) track.optDouble("duration").toFloat() else null
+                    ))
                 }
-                if (bytes.isEmpty()) throw IllegalStateException("Server mengembalikan audio kosong.")
+                if (downloaded.isEmpty()) throw IllegalStateException("Suno selesai tetapi audio tidak bisa diunduh.")
                 activity.runOnUiThread {
-                    audioBytes = bytes
+                    generatedTracks = downloaded
+                    selectedTrackIndex = 0
+                    audioBytes = downloaded[0].audioBytes
+                    title = downloaded[0].title
                     audioMimeType = "audio/mpeg"
-                    status = "Lagu berhasil dibuat • ${bytes.size / 1024} KB (hasil 1 dari ${tracks.length()})"
+                    status = "${downloaded.size} hasil lagu berhasil dibuat dan siap dipilih."
                     busy = false
                     page = AppPage.EDIT
                 }
