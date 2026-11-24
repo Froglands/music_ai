@@ -397,13 +397,18 @@ fun MusicAiScreen() {
                             label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
                         )
 
-                        OutlinedTextField(
-                            value = lyrics, onValueChange = { lyrics = it },
-                            label = { Text("Lirik atau ide lagu") },
-                            modifier = Modifier.fillMaxWidth().height(240.dp),
-                            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x33201B31), unfocusedContainerColor = Color(0x22201B31), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x665F5477)),
-                            placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nPetunjuk ini akan hilang saat kamu mulai mengetik.") }
-                        )
+                        Surface(color = Color(0x442B2144), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("IDE & LIRIK", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                            OutlinedTextField(
+                                value = lyrics, onValueChange = { lyrics = it },
+                                label = { Text("Lirik atau ide lagu") },
+                                modifier = Modifier.fillMaxWidth().height(240.dp),
+                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x33201B31), unfocusedContainerColor = Color(0x22201B31), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x665F5477)),
+                                placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nPetunjuk ini akan hilang saat kamu mulai mengetik.") }
+                            )
+                            }
+                        }
 
                         Surface(color = Color(0x442D2544), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66C4ADFF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
