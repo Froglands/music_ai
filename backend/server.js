@@ -6,15 +6,16 @@ import { timingSafeEqual } from "node:crypto";
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.MUSICAPI_API_KEY;
+const lyriaApiKey = process.env.GEMINI_API_KEY;
 const devAccessCode = process.env.MUSICAI_DEV_ACCESS_CODE;
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "X-MusicAI-Dev-Code", "X-MusicAPI-Key"] }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "X-MusicAI-Dev-Code", "X-MusicAPI-Key", "X-Lyria-API-Key"] }));
 app.use(express.json({ limit: "80kb" }));
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 3, standardHeaders: "draft-7", legacyHeaders: false });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "musicai-backend", provider: "musicapi-sonic" });
+  res.json({ ok: true, service: "musicai-backend", providers: ["musicapi-sonic", "google-lyria-3.5"] });
 });
 
 const devVerifyLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false });
@@ -46,7 +47,87 @@ function providerError(payload, fallback) {
   return payload?.error?.message || payload?.error || payload?.message || fallback;
 }
 
+function requestLyriaKey(req) {
+  const override = typeof req.get("X-Lyria-API-Key") === "string" ? req.get("X-Lyria-API-Key").trim() : "";
+  if (!override) return lyriaApiKey;
+  if (!devAccessCode) return null;
+  const submitted = Buffer.from(req.get("X-MusicAI-Dev-Code") || "");
+  const expected = Buffer.from(devAccessCode);
+  if (submitted.length !== expected.length || !timingSafeEqual(submitted, expected)) return null;
+  return override.slice(0, 512);
+}
+
+async function generateLyria(req, res) {
+  const activeKey = requestLyriaKey(req);
+  if (!activeKey) return res.status(req.get("X-Lyria-API-Key") ? 401 : 503).json({
+    error: req.get("X-Lyria-API-Key") ? "Akses pengembang tidak valid untuk API key Lyria." : "Atur GEMINI_API_KEY di Vercel atau simpan API key Lyria di menu Pengembang."
+  });
+
+  const title = cleanString(req.body?.title, 80) || "MusicAI";
+  const lyrics = cleanString(req.body?.lyrics, 5000);
+  const genre = cleanString(req.body?.genre, 160) || "Pop";
+  const mood = cleanString(req.body?.mood, 200) || "uplifting";
+  const bpm = Number(req.body?.bpm || 110);
+  const duration = Math.max(60, Math.min(180, Math.round(Number(req.body?.duration || 120))));
+  const vocal = req.body?.vocal || "female";
+  if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
+  if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan lirik atau ide lagu minimal 10 karakter." });
+
+  const vocalText = vocal === "instrumental" ? "Instrumental only, no singing and no spoken words." :
+    vocal === "male" ? "Male lead singing voice." :
+    vocal === "duet" ? "Male and female duet vocals, alternating verses and harmonized chorus." :
+    "Female lead singing voice.";
+  const prompt = [
+    `Create an original full-length song, approximately ${duration} seconds (${Math.floor(duration / 60)} minutes and ${duration % 60} seconds).`,
+    `Title: ${title}.`,
+    `Genre and arrangement: ${genre}.`,
+    `Mood: ${mood}.`,
+    `Tempo: ${bpm} BPM.`,
+    vocalText,
+    "Use the following original lyrics exactly as the song lyrics. Preserve section labels and do not omit verses:",
+    lyrics
+  ].join("\\n\\n");
+
+  try {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: { "x-goog-api-key": activeKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "lyria-3.5", input: prompt, store: false }),
+      signal: AbortSignal.timeout(540_000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("Lyria generation error:", response.status, JSON.stringify(payload).slice(0, 1000));
+      const message = providerError(payload, "Google Lyria gagal membuat lagu.");
+      return res.status(response.status === 429 ? 429 : response.status === 401 || response.status === 403 ? 401 : response.status >= 500 ? 502 : 400)
+        .json({ error: message });
+    }
+
+    let audioData = payload.output_audio?.data || null;
+    let outputText = payload.output_text || "";
+    if (!audioData && Array.isArray(payload.steps)) {
+      for (const step of payload.steps) {
+        if (step.type !== "model_output" || !Array.isArray(step.content)) continue;
+        for (const block of step.content) {
+          if (block.type === "audio" && block.data) audioData = block.data;
+          if (block.type === "text" && block.text) outputText += (outputText ? "\\n" : "") + block.text;
+        }
+      }
+    }
+    if (!audioData) return res.status(502).json({ error: "Lyria merespons tetapi data audio tidak ditemukan." });
+    return res.json({
+      provider: "lyria-3.5",
+      status: "completed",
+      tracks: [{ title, audioBase64: audioData, mimeType: "audio/mpeg", duration, lyrics: outputText }]
+    });
+  } catch (error) {
+    console.error("Lyria request failed:", error);
+    return res.status(504).json({ error: "Permintaan ke Lyria timeout atau koneksi terputus. Periksa status sebelum mengulang agar tidak terkena biaya dua kali." });
+  }
+}
+
 app.post("/api/generate", generationLimiter, async (req, res) => {
+  if (req.body?.provider === "lyria") return generateLyria(req, res);
   const activeApiKey = requestProviderKey(req);
   if (!activeApiKey) return res.status(req.get("X-MusicAPI-Key") ? 401 : 503).json({ error: req.get("X-MusicAPI-Key") ? "Akses pengembang tidak valid untuk API key pengganti." : "Backend belum dikonfigurasi: MUSICAPI_API_KEY belum diatur di Vercel." });
 
