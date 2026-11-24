@@ -130,19 +130,56 @@ fun MusicAiScreen() {
                     .url("${backendUrl.trim().trimEnd('/')}/api/generate")
                     .post(json.toString().toRequestBody("application/json".toMediaType()))
                     .build()
-                client.newCall(request).execute().use { response ->
+                val jobId = client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        val message = response.body?.string() ?: "Server error ${response.code}"
+                        val message = try { JSONObject(body).optString("error", "Server error ${response.code}") } catch (_: Exception) { "Server error ${response.code}" }
                         throw IllegalStateException(message)
                     }
-                    val bytes = response.body?.bytes() ?: throw IllegalStateException("Audio kosong.")
-                    if (bytes.isEmpty()) throw IllegalStateException("Server mengembalikan audio kosong.")
-                    activity.runOnUiThread {
-                        audioBytes = bytes
-                        status = "Lagu berhasil dibuat • ${bytes.size / 1024} KB"
-                        busy = false
-                        page = AppPage.EDIT
+                    JSONObject(body).optString("jobId").takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("Server tidak mengembalikan ID generasi.")
+                }
+
+                var completedTracks: org.json.JSONArray? = null
+                var lastStatus = "QUEUED"
+                repeat(90) {
+                    Thread.sleep(5_000)
+                    val statusRequest = Request.Builder()
+                        .url("${backendUrl.trim().trimEnd('/')}/api/job/${jobId}")
+                        .get()
+                        .build()
+                    client.newCall(statusRequest).execute().use { response ->
+                        val body = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) {
+                            val message = try { JSONObject(body).optString("error", "Gagal memeriksa status.") } catch (_: Exception) { "Gagal memeriksa status." }
+                            throw IllegalStateException(message)
+                        }
+                        val job = JSONObject(body)
+                        lastStatus = job.optString("status", "PROCESSING")
+                        if (lastStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
+                        if (lastStatus == "COMPLETED") completedTracks = job.optJSONArray("tracks")
                     }
+                    if (completedTracks != null) return@repeat
+                    activity.runOnUiThread { status = "Membuat lagu dengan Suno... (${lastStatus.lowercase()})" }
+                    if (completedTracks != null) return@repeat
+                }
+                val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
+                if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
+                val firstTrack = tracks.getJSONObject(0)
+                val audioUrl = firstTrack.optString("audioUrl")
+                if (!audioUrl.startsWith("https://")) throw IllegalStateException("URL audio dari penyedia tidak valid.")
+                val audioRequest = Request.Builder().url(audioUrl).get().build()
+                val bytes = client.newCall(audioRequest).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh audio (${response.code}).")
+                    response.body?.bytes() ?: throw IllegalStateException("Audio kosong.")
+                }
+                if (bytes.isEmpty()) throw IllegalStateException("Server mengembalikan audio kosong.")
+                activity.runOnUiThread {
+                    audioBytes = bytes
+                    audioMimeType = "audio/mpeg"
+                    status = "Lagu berhasil dibuat • ${bytes.size / 1024} KB (hasil 1 dari ${tracks.length()})"
+                    busy = false
+                    page = AppPage.EDIT
                 }
             } catch (e: Exception) {
                 activity.runOnUiThread {
