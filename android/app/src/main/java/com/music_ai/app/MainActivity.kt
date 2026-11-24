@@ -50,7 +50,47 @@ import java.util.concurrent.TimeUnit
 
 private enum class AppPage { STUDIO, EDIT, SETTINGS }
 
-private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null)
+private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null)
+
+private fun loadMusicHistory(context: android.content.Context): List<MusicTrack> {
+    val prefs = context.getSharedPreferences("musicai_history", android.content.Context.MODE_PRIVATE)
+    val records = runCatching { org.json.JSONArray(prefs.getString("tracks", "[]")) }.getOrNull() ?: return emptyList()
+    val folder = java.io.File(context.filesDir, "music_history")
+    return buildList {
+        for (i in 0 until records.length()) {
+            val item = records.optJSONObject(i) ?: continue
+            val fileName = item.optString("fileName")
+            val file = java.io.File(folder, fileName)
+            if (fileName.isBlank() || !file.exists() || file.length() == 0L) continue
+            runCatching {
+                add(MusicTrack(item.optString("title", "MusicAI"), file.readBytes(),
+                    item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                    if (item.has("duration")) item.optDouble("duration").toFloat() else null, fileName))
+            }
+        }
+    }
+}
+
+private fun saveMusicHistory(context: android.content.Context, tracks: List<MusicTrack>): List<MusicTrack> {
+    val folder = java.io.File(context.filesDir, "music_history").apply { mkdirs() }
+    val saved = tracks.mapIndexed { index, track ->
+        val name = track.fileName ?: "track_${System.currentTimeMillis()}_${index}.mp3"
+        java.io.File(folder, name).writeBytes(track.audioBytes)
+        track.copy(fileName = name)
+    }
+    val records = org.json.JSONArray()
+    saved.forEach { track ->
+        records.put(JSONObject().apply {
+            put("title", track.title)
+            put("fileName", track.fileName)
+            put("imageUrl", track.imageUrl ?: "")
+            track.durationSeconds?.let { put("duration", it.toDouble()) }
+        })
+    }
+    context.getSharedPreferences("musicai_history", android.content.Context.MODE_PRIVATE)
+        .edit().putString("tracks", records.toString()).apply()
+    return saved
+}
 
 private fun formatTime(milliseconds: Int): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
@@ -90,7 +130,7 @@ fun MusicAiScreen() {
     var status by remember { mutableStateOf("Siap membuat lagu.") }
     var audioBytes by remember { mutableStateOf<ByteArray?>(null) }
     var audioMimeType by remember { mutableStateOf("audio/mpeg") }
-    var generatedTracks by remember { mutableStateOf(listOf<MusicTrack>()) }
+    var generatedTracks by remember { mutableStateOf(loadMusicHistory(context)) }
     var selectedTrackIndex by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackPosition by remember { mutableIntStateOf(0) }
@@ -216,9 +256,9 @@ fun MusicAiScreen() {
                 }
                 if (downloaded.isEmpty()) throw IllegalStateException("Suno selesai tetapi audio tidak bisa diunduh.")
                 activity.runOnUiThread {
-                    generatedTracks = downloaded
+                    generatedTracks = saveMusicHistory(context, downloaded)
                     selectedTrackIndex = 0
-                    audioBytes = downloaded[0].audioBytes
+                    audioBytes = generatedTracks[0].audioBytes
                     title = downloaded[0].title
                     audioMimeType = "audio/mpeg"
                     status = "${downloaded.size} hasil lagu berhasil dibuat dan siap dipilih."
@@ -405,7 +445,7 @@ fun MusicAiScreen() {
                                 label = { Text("Lirik atau ide lagu") },
                                 modifier = Modifier.fillMaxWidth().height(240.dp),
                                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x33201B31), unfocusedContainerColor = Color(0x22201B31), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x665F5477)),
-                                placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\nPetunjuk ini akan hilang saat kamu mulai mengetik.") }
+                                placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\n") }
                             )
                             }
                         }
@@ -451,6 +491,7 @@ fun MusicAiScreen() {
                         Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
 
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
+                        Text("Maksimal 6 menit sesuai batas durasi AI.", color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
                         Box {
                             OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -482,7 +523,7 @@ fun MusicAiScreen() {
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                            else Text("BUAT LAGU SEKARANG", fontWeight = FontWeight.Bold)
+                            else Text("CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -521,7 +562,8 @@ fun MusicAiScreen() {
                             Text(if (busy) "Membuat ulang..." else "Buat ulang dengan perubahan")
                         }
 
-                        Text("Dua hasil generasi", fontWeight = FontWeight.Bold)
+                        Text("Riwayat & hasil lagu", fontWeight = FontWeight.Bold)
+                        if (generatedTracks.isEmpty()) Text("Belum ada riwayat lagu. Hasil generasi akan tersimpan di perangkat ini.", color = Color.LightGray, fontSize = 12.sp)
                         Text(status, color = Color.LightGray, fontSize = 13.sp)
                         generatedTracks.forEachIndexed { index, track ->
                             Surface(
@@ -632,7 +674,9 @@ fun MusicAiScreen() {
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
-                                Text("Versi 0.4.0 • Android native • Flow Music import", color = Color.LightGray, fontSize = 12.sp)
+                                Text("Versi 0.5.0 • Android native", color = Color.LightGray, fontSize = 12.sp)
+                                Text("MusicAI adalah studio musik berbasis AI untuk membuat lagu dari ide atau lirik, memilih genre, mood, tempo, dan vokal pria atau wanita. Hasil dapat diputar, diedit, diunduh, dan tersimpan di riwayat perangkat.", color = Color.LightGray, fontSize = 13.sp)
+                                Text("Dikembangkan oleh ryuzee_project", color = Color(0xFFD6C7FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
