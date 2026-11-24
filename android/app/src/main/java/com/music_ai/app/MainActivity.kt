@@ -501,7 +501,7 @@ fun MusicAiScreen() {
                         Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
 
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
-                        Text("Maksimal 6 menit sesuai batas durasi AI.", color = Color.LightGray, fontSize = 11.sp)
+                        Text("Durasi maksimal AI: 6 menit. Untuk durasi ini, gunakan mode lirik agar hasil lebih mendekati target.", color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
                         Box {
                             OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -572,7 +572,7 @@ fun MusicAiScreen() {
                             value = lyrics, onValueChange = { lyrics = it },
                             label = { Text("Edit lirik") }, modifier = Modifier.fillMaxWidth().height(260.dp)
                         )
-                        Text("Genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ")} • Vokal: ${when(vocal) { "female" -> "Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
+                        Text("Genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ")} • Vokal: ${when(vocal) { "female" -> "Wanita"; "duet" -> "Duet Pria + Wanita"; "instrumental" -> "Instrumen"; else -> "Pria" }}")
                         Text("Tempo: ${bpm.toInt()} BPM")
                         Button(
                             onClick = { generateSong() },
