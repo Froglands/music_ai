@@ -221,6 +221,35 @@ fun MusicAiScreen() {
         }.start()
     }
 
+
+    fun playAudio() {
+        val bytes = audioBytes ?: return
+        try {
+            val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
+            val temp = java.io.File(context.cacheDir, "musicai-preview-$selectedTrackIndex.$extension")
+            temp.writeBytes(bytes)
+            player?.release()
+            player = MediaPlayer().apply {
+                setDataSource(temp.absolutePath)
+                prepare()
+                start()
+                isPlaying = true
+                playbackDuration = duration.coerceAtLeast(0)
+                playbackPosition = 0
+                setOnCompletionListener {
+                    isPlaying = false
+                    if (selectedTrackIndex < generatedTracks.lastIndex) activity.runOnUiThread { selectTrack((selectedTrackIndex + 1).coerceAtMost(generatedTracks.lastIndex), true) }
+                    else playbackPosition = playbackDuration
+                }
+            }
+            status = "Memutar: $title"
+        } catch (e: Exception) {
+            isPlaying = false
+            status = "Gagal memutar: ${e.message}"
+        }
+    }
+
+
     fun selectTrack(index: Int, autoplay: Boolean = false) {
         if (index !in generatedTracks.indices) return
         selectedTrackIndex = index
@@ -249,32 +278,6 @@ fun MusicAiScreen() {
     fun playNext() = selectTrack((selectedTrackIndex + 1).coerceAtMost(generatedTracks.lastIndex), true)
     fun playPrevious() = selectTrack((selectedTrackIndex - 1).coerceAtLeast(0), true)
 
-    fun playAudio() {
-        val bytes = audioBytes ?: return
-        try {
-            val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
-            val temp = java.io.File(context.cacheDir, "musicai-preview-$selectedTrackIndex.$extension")
-            temp.writeBytes(bytes)
-            player?.release()
-            player = MediaPlayer().apply {
-                setDataSource(temp.absolutePath)
-                prepare()
-                start()
-                isPlaying = true
-                playbackDuration = duration.coerceAtLeast(0)
-                playbackPosition = 0
-                setOnCompletionListener {
-                    isPlaying = false
-                    if (selectedTrackIndex < generatedTracks.lastIndex) activity.runOnUiThread { playNext() }
-                    else playbackPosition = playbackDuration
-                }
-            }
-            status = "Memutar: $title"
-        } catch (e: Exception) {
-            isPlaying = false
-            status = "Gagal memutar: ${e.message}"
-        }
-    }
 
     fun saveAudio() {
         val bytes = audioBytes ?: return
