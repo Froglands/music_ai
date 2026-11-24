@@ -53,7 +53,7 @@ import java.util.concurrent.TimeUnit
 
 private enum class AppPage { STUDIO, LIBRARY, PLAYER, SETTINGS }
 
-private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null, val coverFileName: String? = null, val artist: String? = null)
+private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null, val coverFileName: String? = null, val artist: String? = null, val isAiGenerated: Boolean = false)
 
 private fun loadMusicHistory(context: android.content.Context): List<MusicTrack> {
     val prefs = context.getSharedPreferences("musicai_history", android.content.Context.MODE_PRIVATE)
@@ -70,7 +70,7 @@ private fun loadMusicHistory(context: android.content.Context): List<MusicTrack>
                     item.optString("imageUrl").takeIf { it.startsWith("https://") },
                     if (item.has("duration")) item.optDouble("duration").toFloat() else null, fileName,
                     item.optString("coverFileName").takeIf { it.isNotBlank() },
-                    item.optString("artist").takeIf { it.isNotBlank() }))
+                    item.optString("artist").takeIf { it.isNotBlank() }, item.optBoolean("isAiGenerated", false)))
             }
         }
     }
@@ -92,6 +92,7 @@ private fun saveMusicHistory(context: android.content.Context, tracks: List<Musi
             put("imageUrl", track.imageUrl ?: "")
             put("coverFileName", track.coverFileName ?: "")
             put("artist", track.artist ?: "")
+            put("isAiGenerated", track.isAiGenerated)
             track.durationSeconds?.let { put("duration", it.toDouble()) }
         })
     }
@@ -297,7 +298,8 @@ fun MusicAiScreen() {
                         title = track.optString("title", "$title - Hasil ${index + 1}").ifBlank { "$title - Hasil ${index + 1}" },
                         audioBytes = bytes,
                         imageUrl = track.optString("imageUrl").takeIf { it.startsWith("https://") },
-                        durationSeconds = if (track.has("duration")) track.optDouble("duration").toFloat() else null
+                        durationSeconds = if (track.has("duration")) track.optDouble("duration").toFloat() else null,
+                        isAiGenerated = true
                     ))
                 }
                 if (downloaded.isEmpty()) throw IllegalStateException("Suno selesai tetapi audio tidak bisa diunduh.")
@@ -618,14 +620,22 @@ fun MusicAiScreen() {
                             if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                             else Text("CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
                         }
-                        if (generatedTracks.isNotEmpty()) {
-                            Text("LAGU TERBARU", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            generatedTracks.takeLast(3).asReversed().forEach { track ->
-                                val trackIndex = generatedTracks.indexOf(track)
+                        val aiTracks = generatedTracks.withIndex().filter { it.value.isAiGenerated }
+                        if (aiTracks.isNotEmpty()) {
+                            Text("HASIL AI TERBARU", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            aiTracks.takeLast(3).asReversed().forEach { indexedTrack ->
+                                val trackIndex = indexedTrack.index
+                                val track = indexedTrack.value
                                 Surface(color = panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(), onClick = { selectTrack(trackIndex, false); page = AppPage.PLAYER }) {
                                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
-                                        Text(track.title, modifier = Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                        if (track.imageUrl != null) {
+                                            AsyncImage(model = track.imageUrl, contentDescription = "Cover ${track.title}", modifier = Modifier.size(58.dp), contentScale = ContentScale.Crop)
+                                        } else {
+                                            Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(10.dp), modifier = Modifier.size(58.dp)) {
+                                                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(30.dp)) }
+                                            }
+                                        }
+                                        Text(track.title, modifier = Modifier.weight(1f), maxLines = 2, fontWeight = FontWeight.SemiBold)
                                         IconButton(onClick = { selectTrack(trackIndex, true); page = AppPage.PLAYER }) { Icon(Icons.Default.PlayArrow, "Putar") }
                                     }
                                 }
