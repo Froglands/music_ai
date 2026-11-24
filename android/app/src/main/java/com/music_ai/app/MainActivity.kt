@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -138,6 +140,7 @@ fun MusicAiScreen() {
     var audioMimeType by remember { mutableStateOf("audio/mpeg") }
     var generatedTracks by remember { mutableStateOf(loadMusicHistory(context)) }
     var selectedTrackIndex by remember { mutableIntStateOf(0) }
+    var trackToDelete by remember { mutableIntStateOf(-1) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackPosition by remember { mutableIntStateOf(0) }
     var playbackDuration by remember { mutableIntStateOf(0) }
@@ -344,14 +347,49 @@ fun MusicAiScreen() {
 
     fun selectTrack(index: Int, autoplay: Boolean = false) {
         if (index !in generatedTracks.indices) return
+        if (index == selectedTrackIndex && player != null) {
+            if (autoplay && !isPlaying) togglePlayback()
+            return
+        }
         selectedTrackIndex = index
         audioBytes = generatedTracks[index].audioBytes
         title = generatedTracks[index].title
+        audioMimeType = "audio/mpeg"
         playbackPosition = 0
+        playbackDuration = (generatedTracks[index].durationSeconds?.times(1000))?.toInt() ?: 0
         player?.release()
         player = null
         isPlaying = false
         if (autoplay) playAudio()
+    }
+
+    fun deleteTrack(index: Int) {
+        if (index !in generatedTracks.indices) return
+        val removed = generatedTracks[index]
+        if (index == selectedTrackIndex) {
+            player?.stop()
+            player?.release()
+            player = null
+            isPlaying = false
+            audioBytes = null
+            playbackPosition = 0
+            playbackDuration = 0
+        }
+        removed.fileName?.let { java.io.File(java.io.File(context.filesDir, "music_history"), it).delete() }
+        removed.coverFileName?.let { java.io.File(java.io.File(context.filesDir, "music_covers"), it).delete() }
+        val updated = generatedTracks.toMutableList().also { it.removeAt(index) }
+        generatedTracks = saveMusicHistory(context, updated)
+        selectedTrackIndex = when {
+            generatedTracks.isEmpty() -> 0
+            index < selectedTrackIndex -> selectedTrackIndex - 1
+            index == selectedTrackIndex -> (index.coerceAtMost(generatedTracks.lastIndex))
+            else -> selectedTrackIndex
+        }
+        if (generatedTracks.isNotEmpty() && audioBytes == null) {
+            audioBytes = generatedTracks[selectedTrackIndex].audioBytes
+            title = generatedTracks[selectedTrackIndex].title
+        }
+        status = "Lagu dihapus dari Pustaka."
     }
 
     fun togglePlayback() {
@@ -421,6 +459,18 @@ fun MusicAiScreen() {
                 },
                 confirmButton = { TextButton(onClick = { showGenreDialog = false }) { Text("Selesai") } },
                 dismissButton = { TextButton(onClick = { selectedGenres = emptySet(); customGenre = "" }) { Text("Reset") } }
+            )
+        }
+        if (trackToDelete >= 0 && trackToDelete < generatedTracks.size) {
+            AlertDialog(
+                onDismissRequest = { trackToDelete = -1 },
+                title = { Text("Hapus lagu?") },
+                text = { Text("\" ${generatedTracks[trackToDelete].title} \" akan dihapus dari Pustaka MusicAI dan penyimpanan internal aplikasi.") },
+                confirmButton = {
+                    TextButton(onClick = { val index = trackToDelete; trackToDelete = -1; deleteTrack(index); if (page == AppPage.PLAYER && generatedTracks.isEmpty()) page = AppPage.LIBRARY }) { Text("Hapus", color = Color(0xFFFF8A80)) }
+                },
+                dismissButton = { TextButton(onClick = { trackToDelete = -1 }) { Text("Batal") } },
+                containerColor = Color(0xFF211A32)
             )
         }
         Scaffold(
@@ -600,8 +650,9 @@ fun MusicAiScreen() {
                             }
                         }
                         generatedTracks.forEachIndexed { index, track ->
+                            var menuExpanded by remember(track.fileName) { mutableStateOf(false) }
                             Surface(color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), onClick = {
-                                selectTrack(index, false)
+                                if (index != selectedTrackIndex) selectTrack(index, false)
                                 page = AppPage.PLAYER
                             }) {
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -614,7 +665,14 @@ fun MusicAiScreen() {
                                         Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                         Text(listOfNotNull(track.artist, track.durationSeconds?.let { formatTime((it * 1000).toInt()) }).joinToString(" • ").ifBlank { "Audio • tersimpan di perangkat" }, color = Color.LightGray, fontSize = 11.sp)
                                     }
-                                    IconButton(onClick = { selectTrack(index, true); page = AppPage.PLAYER }) { Icon(Icons.Default.PlayArrow, "Putar lagu", tint = accent) }
+                                    IconButton(onClick = { if (index != selectedTrackIndex) selectTrack(index, false); page = AppPage.PLAYER; if (!isPlaying) togglePlayback() }) { Icon(Icons.Default.PlayArrow, "Putar lagu", tint = accent) }
+                                    Box {
+                                        IconButton(onClick = { menuExpanded = true }) { Icon(Icons.Default.MoreVert, "Opsi lagu") }
+                                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                            DropdownMenuItem(text = { Text("Buka pemutar") }, onClick = { menuExpanded = false; if (index != selectedTrackIndex) selectTrack(index, false); page = AppPage.PLAYER })
+                                            DropdownMenuItem(text = { Text("Hapus dari pustaka") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menuExpanded = false; trackToDelete = index })
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -622,7 +680,14 @@ fun MusicAiScreen() {
                     }
 
                     AppPage.PLAYER -> {
-                        TextButton(onClick = { page = AppPage.LIBRARY }) { Text("‹  Kembali ke Pustaka") }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { page = AppPage.LIBRARY }) { Text("‹  Pustaka") }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { if (selectedTrackIndex in generatedTracks.indices) trackToDelete = selectedTrackIndex }) {
+                                Icon(Icons.Default.Delete, null)
+                                Text("Hapus")
+                            }
+                        }
                         val currentTrack = generatedTracks.getOrNull(selectedTrackIndex)
                         Text("SEDANG DIPUTAR", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Surface(color = Color(0xFF201A31), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -637,6 +702,11 @@ fun MusicAiScreen() {
                                 }
                                 Text(currentTrack?.title ?: title.ifBlank { "Belum ada lagu dipilih" }, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                                 Text(currentTrack?.artist?.takeIf { it.isNotBlank() } ?: "MusicAI • Lagu", color = Color.LightGray, fontSize = 13.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                    Surface(color = Color(0xFF3A2D55), shape = RoundedCornerShape(50)) {
+                                        Text(if (currentTrack?.imageUrl != null || playerCover != null) "COVER ASLI" else "ARTWORK MUSICAI", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Color(0xFFD6C7FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                                 Slider(value = playbackPosition.toFloat().coerceIn(0f, playbackDuration.coerceAtLeast(1).toFloat()), onValueChange = { seekTo(it.toInt()) }, valueRange = 0f..playbackDuration.coerceAtLeast(1).toFloat(), enabled = playbackDuration > 0)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(formatTime(playbackPosition), color = Color.LightGray, fontSize = 11.sp)
@@ -649,10 +719,17 @@ fun MusicAiScreen() {
                                     }
                                     IconButton(onClick = { playNext() }, enabled = selectedTrackIndex < generatedTracks.lastIndex) { Icon(Icons.Default.SkipNext, "Berikutnya", modifier = Modifier.size(30.dp)) }
                                 }
-                                Button(onClick = { saveAudio() }, enabled = audioBytes != null, modifier = Modifier.fillMaxWidth()) {
-                                    Icon(Icons.Default.Download, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Unduh / simpan audio")
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedButton(onClick = { saveAudio() }, enabled = audioBytes != null, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Default.Download, null)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Simpan")
+                                    }
+                                    OutlinedButton(onClick = { if (selectedTrackIndex in generatedTracks.indices) trackToDelete = selectedTrackIndex }, enabled = currentTrack != null, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Default.Delete, null)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Hapus")
+                                    }
                                 }
                             }
                         }
