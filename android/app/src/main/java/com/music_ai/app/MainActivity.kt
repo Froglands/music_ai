@@ -247,7 +247,9 @@ fun MusicAiScreen() {
                 }
                 val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
                 if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
-                val downloaded = mutableListOf<MusicTrack>()                for (index in 0 until tracks.length()) {                    val track = tracks.getJSONObject(index)
+                val downloaded = mutableListOf<MusicTrack>()
+                for (index in 0 until tracks.length()) {
+                    val track = tracks.getJSONObject(index)
                     val audioUrl = track.optString("audioUrl")
                     if (!audioUrl.startsWith("https://")) continue
                     val bytes = client.newCall(Request.Builder().url(audioUrl).get().build()).execute().use { response ->
@@ -495,7 +497,8 @@ fun MusicAiScreen() {
                             Text("Tempo", fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
                             Text("${bpm.toInt()} BPM", color = accent, fontWeight = FontWeight.Bold)
-                        }                        Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
+                        }
+                        Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
                         Text("Durasi maksimal AI: 6 menit. Untuk durasi ini, gunakan mode lirik agar hasil lebih mendekati target.", color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
