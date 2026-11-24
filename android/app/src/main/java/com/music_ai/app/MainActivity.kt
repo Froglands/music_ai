@@ -243,10 +243,13 @@ fun MusicAiScreen() {
                             }
                         }
 
-                        Text("Karakter vokal", fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            FilterChip(selected = vocal == "male", onClick = { vocal = "male" }, label = { Text("Pria") })
-                            FilterChip(selected = vocal == "female", onClick = { vocal = "female" }, label = { Text("Wanita") })
+                        Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "Mode sementara: musik instrumental tanpa vokal. Lirik digunakan sebagai inspirasi tema musik.",
+                                color = Color.LightGray,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -328,7 +331,7 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Masukkan URL HTTPS backend yang sudah online. API key ElevenLabs wajib disimpan sebagai environment variable di server, bukan di aplikasi.",
+                                    "Masukkan URL HTTPS backend yang sudah online. API key Stability AI disimpan sebagai environment variable di server, bukan di aplikasi.",
                                     color = Color.LightGray, fontSize = 12.sp
                                 )
                                 OutlinedTextField(
@@ -377,7 +380,7 @@ fun MusicAiScreen() {
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Tentang MusicAI", fontWeight = FontWeight.Bold)
-                                Text("Versi 0.2.1 • Android native • Powered by ElevenLabs", color = Color.LightGray, fontSize = 12.sp)
+                                Text("Versi 0.3.0 • Android native • Instrumental by Stable Audio", color = Color.LightGray, fontSize = 12.sp)
                             }
                         }
                     }
@@ -398,7 +401,7 @@ fun MusicAiScreen() {
                         }
                     }
                 }
-                Text("MusicAI • Powered by ElevenLabs", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text("MusicAI • Powered by Stable Audio", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
         }
     }
