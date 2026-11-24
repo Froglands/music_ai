@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -118,7 +119,7 @@ private fun apiKeySecret(context: android.content.Context): javax.crypto.SecretK
 
 private fun saveDeveloperApiKey(context: android.content.Context, value: String, provider: String = "musicapi") {
     val prefs = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
-    val prefKey = if (provider == "lyria") "lyria_api_key_encrypted" else "provider_api_key_encrypted"
+    val prefKey = when (provider) { "lyria" -> "lyria_api_key_encrypted"; "stability" -> "stability_api_key_encrypted"; else -> "provider_api_key_encrypted" }
     if (value.isBlank()) {
         prefs.edit().remove(prefKey).apply()
         return
@@ -196,6 +197,7 @@ fun MusicAiScreen() {
     var developerMessage by remember { mutableStateOf("") }
     var developerApiKey by remember { mutableStateOf(loadDeveloperApiKey(context)) }
     var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
+    var developerStabilityApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "stability")) }
     var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
     var showLyriaCostConfirm by remember { mutableStateOf(false) }
     var apiKeyVisible by remember { mutableStateOf(false) }
@@ -261,25 +263,27 @@ fun MusicAiScreen() {
 
     fun generateSong() {
         if (busy) return
-        if (backendUrl.isBlank()) {
+        val useStability = selectedProvider == "stability"
+        if (!useStability && backendUrl.isBlank()) {
             status = "Masukkan URL backend HTTPS di Pengaturan terlebih dahulu."
             page = AppPage.SETTINGS
             return
         }
-        if (lyrics.trim().length < 10) {
+        if (!useStability && lyrics.trim().length < 10) {
             status = "Lirik minimal 10 karakter."
             return
         }
         val useLyria = selectedProvider == "lyria"
         val apiKeyOverride = if (developerUnlocked) developerApiKey.trim() else ""
         val lyriaKeyOverride = if (developerUnlocked) developerLyriaApiKey.trim() else ""
-        val devCodeForRequest = if (apiKeyOverride.isNotBlank() || lyriaKeyOverride.isNotBlank()) developerCode else ""
+        val stabilityKeyOverride = if (developerUnlocked) developerStabilityApiKey.trim() else ""
+        val devCodeForRequest = if (apiKeyOverride.isNotBlank() || lyriaKeyOverride.isNotBlank() || stabilityKeyOverride.isNotBlank()) developerCode else ""
         busy = true
         status = "Mengirim permintaan ke server..."
         Thread {
             try {
                 val json = JSONObject().apply {
-                    put("provider", if (useLyria) "lyria" else "musicapi")
+                    put("provider", when { useStability -> "stability"; useLyria -> "lyria"; else -> "musicapi" })
                     put("title", title.trim())
                     put("lyrics", lyrics)
                     put("inputMode", "auto")
@@ -295,6 +299,7 @@ fun MusicAiScreen() {
                     .connectTimeout(30, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.MINUTES)
                     .build()
+                if (useStability && stabilityKeyOverride.isBlank()) throw IllegalStateException("Masukkan dan simpan Stability API key di menu Pengembang.")
                 if (useLyria && lyriaKeyOverride.isBlank()) {
                     throw IllegalStateException("Masukkan dan simpan Gemini API key di menu Pengembang, lalu buka akses pengembang sebelum memakai Lyria.")
                 }
@@ -313,7 +318,26 @@ fun MusicAiScreen() {
                     append("Use these original lyrics. Preserve the section labels and lyrics: ")
                     append(lyrics)
                 }
-                val request = if (useLyria) {
+                val stabilityPrompt = buildString {
+                    append("Instrumental music only, no singing and no spoken words. ")
+                    append("Title: ${title.ifBlank { "MusicAI instrumental" }}. ")
+                    append("Style and genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { "Pop" }}. ")
+                    append("Mood: ${(selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { mood }}. ")
+                    append("Tempo: ${bpm.toInt()} BPM. ")
+                    append("Create a coherent, polished instrumental arrangement with a clear beginning, development and ending.")
+                }
+                val request = if (useStability) {
+                    val form = MultipartBody.Builder().setType(MultipartBody.FORM)
+                        .addFormDataPart("model", "stable-audio-2.5")
+                        .addFormDataPart("prompt", stabilityPrompt)
+                        .addFormDataPart("duration", durationSeconds.coerceIn(1, 180).toString())
+                        .addFormDataPart("output_format", "mp3")
+                        .build()
+                    Request.Builder().url("https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio")
+                        .header("Authorization", "Bearer $stabilityKeyOverride")
+                        .header("Accept", "audio/*")
+                        .post(form).build()
+                } else if (useLyria) {
                     val lyriaBody = JSONObject().put("model", "lyria-3.5").put("input", lyriaPrompt).put("store", false)
                     Request.Builder()
                         .url("https://generativelanguage.googleapis.com/v1beta/interactions")
@@ -328,7 +352,18 @@ fun MusicAiScreen() {
                         .build()
                 }
                 val downloaded = mutableListOf<MusicTrack>()
-                if (useLyria) {
+                if (useStability) {
+                    val audio = client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            val errorBody = response.body?.string().orEmpty()
+                            val detail = runCatching { JSONObject(errorBody).optJSONArray("errors")?.optString(0) }.getOrNull()
+                            throw IllegalStateException(detail?.takeIf { it.isNotBlank() } ?: "Stability API error ${response.code}: $errorBody")
+                        }
+                        response.body?.bytes() ?: throw IllegalStateException("Stability tidak mengembalikan audio.")
+                    }
+                    if (audio.isEmpty()) throw IllegalStateException("File audio Stability kosong.")
+                    downloaded.add(MusicTrack(title = title.ifBlank { "Stability Instrumental" }, audioBytes = audio, durationSeconds = durationSeconds.coerceIn(1, 180).toFloat(), isAiGenerated = true))
+                } else if (useLyria) {
                     val body = client.newCall(request).execute().use { response ->
                         val responseText = response.body?.string().orEmpty()
                         if (!response.isSuccessful) {
@@ -429,7 +464,7 @@ fun MusicAiScreen() {
                     audioBytes = generatedTracks[selectedTrackIndex].audioBytes
                     title = generatedTracks[selectedTrackIndex].title
                     audioMimeType = "audio/mpeg"
-                    status = "${downloaded.size} hasil lagu berhasil dibuat dengan ${if (useLyria) "Google Lyria" else "MusicAPI"} dan siap dipilih."
+                    status = "${downloaded.size} hasil audio berhasil dibuat dengan ${when { useStability -> "Stability AI"; useLyria -> "Google Lyria"; else -> "MusicAPI / Suno" }} dan siap dipilih."
                     busy = false
                     page = AppPage.LIBRARY
                 }
@@ -661,6 +696,12 @@ fun MusicAiScreen() {
                     AppPage.STUDIO -> {
                         Text("Studio kreatif", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Text("Wujudkan ide menjadi musik.", color = Color(0xFFB8B2C8), fontSize = 13.sp)
+                        Text("PILIH AI GENERATOR", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = selectedProvider == "musicapi", onClick = { selectedProvider = "musicapi"; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply() }, label = { Text("Suno") }, modifier = Modifier.weight(1f))
+                            FilterChip(selected = selectedProvider == "stability", onClick = { selectedProvider = "stability"; vocal = "instrumental"; if (durationSeconds > 180) durationSeconds = 180; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "stability").apply() }, label = { Text("Stability") }, modifier = Modifier.weight(1f))
+                        }
+                        Text(if (selectedProvider == "stability") "Stability menghasilkan musik instrumental tanpa vokal. Kredit gratis awal: 25; Stable Audio 2.5 memakai 20 kredit per generasi." else "Suno / MusicAPI mendukung lagu dengan lirik dan vokal.", color = Color.LightGray, fontSize = 11.sp)
                         OutlinedTextField(
                             value = title, onValueChange = { title = it },
                             label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
@@ -719,7 +760,7 @@ fun MusicAiScreen() {
                         }
                         Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
                         Text("Durasi musik", fontWeight = FontWeight.SemiBold)
-                        Text(if (selectedProvider == "lyria") "Lyria 3.5: lagu penuh hingga sekitar 3 menit. Durasi diarahkan melalui prompt." else "Durasi maksimal MusicAPI: 6 menit.", color = Color.LightGray, fontSize = 11.sp)
+                        Text(when { selectedProvider == "stability" -> "Stability Stable Audio 2.5: instrumental hingga 3 menit."; selectedProvider == "lyria" -> "Lyria 3.5: durasi hingga sekitar 3 menit."; else -> "Durasi maksimal Suno / MusicAPI: 6 menit." }, color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
                         Box {
                             OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -727,7 +768,7 @@ fun MusicAiScreen() {
                                 Text("⌄")
                             }
                             DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
-                                (if (selectedProvider == "lyria") listOf(60, 120, 180) else listOf(60, 120, 180, 240, 300, 360)).forEach { seconds ->
+                                (if (selectedProvider == "lyria" || selectedProvider == "stability") listOf(30, 60, 90, 120, 180) else listOf(60, 120, 180, 240, 300, 360)).forEach { seconds ->
                                     DropdownMenuItem(
                                         text = { Text(if (seconds == 360) "Maksimal AI • 6 menit" else if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
                                         onClick = { durationSeconds = seconds; durationExpanded = false }
@@ -1001,6 +1042,29 @@ fun MusicAiScreen() {
                                         },
                                         modifier = Modifier.weight(1f)
                                     ) { Text("Hapus / Reset") }
+                                }
+                                Divider(color = Color(0x665F5477))
+                                Text("STABILITY AI • STABLE AUDIO 2.5", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("API key Stability disimpan terenkripsi di perangkat dan dikirim langsung ke Stability melalui HTTPS. Mode ini menghasilkan instrumental tanpa vokal. Akun baru mendapat 25 kredit; satu generasi Stable Audio 2.5 menggunakan 20 kredit.", color = Color.LightGray, fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = developerStabilityApiKey,
+                                    onValueChange = { developerStabilityApiKey = it },
+                                    label = { Text("Stability API key") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    visualTransformation = if (apiKeyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    trailingIcon = { TextButton(onClick = { apiKeyVisible = !apiKeyVisible }) { Text(if (apiKeyVisible) "Sembunyikan" else "Lihat") } }
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = {
+                                        saveDeveloperApiKey(context, developerStabilityApiKey.trim(), "stability")
+                                        developerMessage = if (developerStabilityApiKey.isBlank()) "Stability API key dihapus." else "Stability API key tersimpan terenkripsi."
+                                    }, modifier = Modifier.weight(1f)) { Text("Simpan Stability key") }
+                                    OutlinedButton(onClick = {
+                                        developerStabilityApiKey = ""
+                                        saveDeveloperApiKey(context, "", "stability")
+                                        developerMessage = "Stability API key dihapus dari perangkat."
+                                    }, modifier = Modifier.weight(1f)) { Text("Hapus key") }
                                 }
                                 Divider(color = Color(0x665F5477))
                                 Text("GOOGLE LYRIA 3.5 • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
