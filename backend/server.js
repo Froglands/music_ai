@@ -9,7 +9,7 @@ const apiKey = process.env.MUSICAPI_API_KEY;
 const devAccessCode = process.env.MUSICAI_DEV_ACCESS_CODE;
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "X-MusicAI-Dev-Code", "X-MusicAPI-Key"] }));
 app.use(express.json({ limit: "80kb" }));
 const generationLimiter = rateLimit({ windowMs: 60_000, limit: 3, standardHeaders: "draft-7", legacyHeaders: false });
 
@@ -27,6 +27,17 @@ app.post("/api/dev/verify", devVerifyLimiter, (req, res) => {
   return res.status(authorized ? 200 : 401).json({ authorized });
 });
 
+
+function requestProviderKey(req) {
+  const override = typeof req.get("X-MusicAPI-Key") === "string" ? req.get("X-MusicAPI-Key").trim() : "";
+  if (!override) return apiKey;
+  if (!devAccessCode) return null;
+  const submitted = Buffer.from(req.get("X-MusicAI-Dev-Code") || "");
+  const expected = Buffer.from(devAccessCode);
+  if (submitted.length !== expected.length || !timingSafeEqual(submitted, expected)) return null;
+  return override.slice(0, 512);
+}
+
 function cleanString(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -36,7 +47,8 @@ function providerError(payload, fallback) {
 }
 
 app.post("/api/generate", generationLimiter, async (req, res) => {
-  if (!apiKey) return res.status(503).json({ error: "Backend belum dikonfigurasi: MUSICAPI_API_KEY belum diatur di Vercel." });
+  const activeApiKey = requestProviderKey(req);
+  if (!activeApiKey) return res.status(req.get("X-MusicAPI-Key") ? 401 : 503).json({ error: req.get("X-MusicAPI-Key") ? "Akses pengembang tidak valid untuk API key pengganti." : "Backend belum dikonfigurasi: MUSICAPI_API_KEY belum diatur di Vercel." });
 
   const title = cleanString(req.body?.title, 80);
   const lyrics = cleanString(req.body?.lyrics, 5000);
@@ -57,7 +69,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   try {
     const response = await fetch("https://api.musicapi.ai/api/v1/sonic/create", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${activeApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
         custom_mode: !instrumental,
@@ -93,7 +105,8 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
 });
 
 app.get("/api/job/:id", async (req, res) => {
-  if (!apiKey) return res.status(503).json({ error: "MUSICAPI_API_KEY belum diatur di Vercel." });
+  const activeApiKey = requestProviderKey(req);
+  if (!activeApiKey) return res.status(req.get("X-MusicAPI-Key") ? 401 : 503).json({ error: req.get("X-MusicAPI-Key") ? "Akses pengembang tidak valid untuk API key pengganti." : "MUSICAPI_API_KEY belum diatur di Vercel." });
   const id = cleanString(req.params.id, 80);
   if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "ID generasi tidak valid." });
 
