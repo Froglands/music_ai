@@ -45,14 +45,15 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   const instrumental = req.body?.instrumental === true || req.body?.vocal === "instrumental";
   const hasLyricsStructure = /\[(verse|chorus|bridge|intro|outro|pre-chorus)/i.test(lyrics) || lyrics.split(/\r?\n/).filter(line => line.trim()).length >= 5;
   const inputMode = req.body?.inputMode === "prompt" || req.body?.inputMode === "auto" && !hasLyricsStructure ? "prompt" : "lyrics";
-  const vocal = req.body?.vocal === "male" ? "m" : "f";
+  const vocal = req.body?.vocal === "male" ? "m" : req.body?.vocal === "female" ? "f" : null;
   const duration = Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
 
   if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: inputMode === "prompt" ? "Tulis ide lagu minimal 10 karakter." : "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
 
-  const tags = [genre, mood, `${bpm} BPM`].join(", ");
+  const vocalDirection = req.body?.vocal === "duet" ? "male and female duet vocals, alternating male and female verses, harmonized duet chorus" : req.body?.vocal === "male" ? "male lead vocal" : req.body?.vocal === "female" ? "female lead vocal" : instrumental ? "instrumental, no vocals" : "vocal song";
+  const tags = [genre, mood, `${bpm} BPM`, vocalDirection].join(", ");
   try {
     const response = await fetch("https://api.musicapi.ai/api/v1/sonic/create", {
       method: "POST",
@@ -66,7 +67,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
           ? { make_instrumental: true, custom_mode: false, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + lyrics + ". " + tags }
           : inputMode === "prompt"
             ? { auto_lyrics: true, prompt: lyrics, vocal_gender: vocal }
-            : { prompt: lyrics, vocal_gender: vocal }),
+            : { prompt: lyrics, ...(vocal ? { vocal_gender: vocal } : {}) }),
         tags,
         duration
       }),
