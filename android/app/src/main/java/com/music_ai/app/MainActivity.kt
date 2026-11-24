@@ -295,14 +295,38 @@ fun MusicAiScreen() {
                     .connectTimeout(30, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.MINUTES)
                     .build()
-                val request = Request.Builder()
-                    .url("${backendUrl.trim().trimEnd('/')}/api/generate")
-                    .post(json.toString().toRequestBody("application/json".toMediaType()))
-                    .apply {
-                        if (useLyria && lyriaKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-Lyria-API-Key", lyriaKeyOverride)
-                        else if (!useLyria && apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride)
-                    }
-                    .build()
+                if (useLyria && lyriaKeyOverride.isBlank()) {
+                    throw IllegalStateException("Masukkan dan simpan Gemini API key di menu Pengembang, lalu buka akses pengembang sebelum memakai Lyria.")
+                }
+                val lyriaPrompt = buildString {
+                    append("Create an original full-length song, approximately ${durationSeconds} seconds. ")
+                    append("Title: ${title.ifBlank { "MusicAI" }}. ")
+                    append("Genre and arrangement: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ")}. ")
+                    append("Mood: ${(selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ")}. ")
+                    append("Tempo: ${bpm.toInt()} BPM. ")
+                    append(when (vocal) {
+                        "male" -> "Male lead singing voice. "
+                        "duet" -> "Male and female duet vocals, alternating verses and harmonized chorus. "
+                        "instrumental" -> "Instrumental only, no vocals. "
+                        else -> "Female lead singing voice. "
+                    })
+                    append("Use these original lyrics. Preserve the section labels and lyrics: ")
+                    append(lyrics)
+                }
+                val request = if (useLyria) {
+                    val lyriaBody = JSONObject().put("model", "lyria-3.5").put("input", lyriaPrompt).put("store", false)
+                    Request.Builder()
+                        .url("https://generativelanguage.googleapis.com/v1beta/interactions")
+                        .header("x-goog-api-key", lyriaKeyOverride)
+                        .post(lyriaBody.toString().toRequestBody("application/json".toMediaType()))
+                        .build()
+                } else {
+                    Request.Builder()
+                        .url("${backendUrl.trim().trimEnd('/')}/api/generate")
+                        .post(json.toString().toRequestBody("application/json".toMediaType()))
+                        .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
+                        .build()
+                }
                 val downloaded = mutableListOf<MusicTrack>()
                 if (useLyria) {
                     val body = client.newCall(request).execute().use { response ->
