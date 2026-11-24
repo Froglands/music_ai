@@ -26,16 +26,17 @@ function providerError(payload, fallback) {
 app.post("/api/generate", generationLimiter, async (req, res) => {
   if (!apiKey) return res.status(503).json({ error: "Backend belum dikonfigurasi: MUSICAPI_API_KEY belum diatur di Vercel." });
 
-  const title = cleanString(req.body?.title, 80) || "MusicAI";
+  const title = cleanString(req.body?.title, 80);
   const lyrics = cleanString(req.body?.lyrics, 5000);
   const genre = cleanString(req.body?.genre, 100) || "Pop";
   const mood = cleanString(req.body?.mood, 200) || "uplifting and melodic";
   const instrumental = req.body?.instrumental === true || req.body?.vocal === "instrumental";
+  const inputMode = req.body?.inputMode === "prompt" ? "prompt" : "lyrics";
   const vocal = req.body?.vocal === "male" ? "m" : "f";
   const duration = Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
 
-  if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
+  if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: inputMode === "prompt" ? "Tulis ide lagu minimal 10 karakter." : "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
 
   const tags = [genre, mood, `${bpm} BPM`].join(", ");
@@ -45,12 +46,14 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
-        custom_mode: !instrumental,
+        custom_mode: true,
         mv: "sonic-v5-5",
-        title,
+        ...(title ? { title } : {}),
         ...(instrumental
-          ? { make_instrumental: true, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + tags }
-          : { prompt: lyrics, vocal_gender: vocal }),
+          ? { make_instrumental: true, custom_mode: false, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + lyrics + ". " + tags }
+          : inputMode === "prompt"
+            ? { auto_lyrics: true, prompt: lyrics, vocal_gender: vocal }
+            : { prompt: lyrics, vocal_gender: vocal }),
         tags,
         duration
       }),
