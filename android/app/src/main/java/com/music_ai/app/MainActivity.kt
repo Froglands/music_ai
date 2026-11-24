@@ -10,6 +10,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +62,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MusicAiScreen() {
     val context = LocalContext.current
@@ -77,6 +81,8 @@ fun MusicAiScreen() {
     var bpm by remember { mutableFloatStateOf(110f) }
     var durationSeconds by remember { mutableIntStateOf(120) }
     var mood by remember { mutableStateOf("Enerjik dan emosional") }
+    var selectedMoods by remember { mutableStateOf(setOf("Emosional", "Sedikit sedih")) }
+    var customMood by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Siap membuat lagu.") }
     var audioBytes by remember { mutableStateOf<ByteArray?>(null) }
@@ -113,7 +119,8 @@ fun MusicAiScreen() {
         }
     }
 
-    val genres = listOf("Dangdut Koplo", "Dangdut", "Pop", "Rock", "Ska", "Rap", "Jazz", "Reggae", "EDM", "Akustik")
+    val genres = listOf("Pop", "Pop Rock", "Indie Pop", "Rock", "Alternative Rock", "Punk Rock", "Pop Punk", "Ska", "Ska-Punk", "Reggae", "Roots Reggae", "Dancehall", "Dangdut", "Dangdut Koplo", "Dangdut Rock", "Keroncong", "Rap", "Hip-Hop", "Trap", "R&B", "Soul", "Funk", "Jazz", "Blues", "Country", "Folk", "Metal", "Heavy Metal", "Hardcore Punk", "Post-Hardcore", "Emo Rock", "Acoustic", "Ballad", "EDM", "House", "Techno", "Trance", "Drum and Bass", "Lo-fi", "Cinematic", "Orchestral")
+    val moodOptions = listOf("Bahagia", "Sedih", "Emosional", "Romantis", "Patah hati", "Nostalgia", "Rindu", "Sendu", "Enerjik", "Semangat", "Agresif", "Gelap", "Tenang", "Damai", "Dreamy", "Melankolis", "Epik", "Ceria", "Santai", "Heroik", "Intim", "Optimistis", "Misterius")
 
     fun generateSong() {
         if (busy) return
@@ -135,9 +142,10 @@ fun MusicAiScreen() {
                     put("lyrics", lyrics)
                     put("genre", genre)
                     put("vocal", vocal)
+                    put("instrumental", vocal == "instrumental")
                     put("bpm", bpm.toInt())
                     put("duration", durationSeconds)
-                    put("mood", mood)
+                    put("mood", (selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { mood })
                 }
                 val client = OkHttpClient.Builder()
                     .callTimeout(10, TimeUnit.MINUTES)
@@ -410,7 +418,7 @@ fun MusicAiScreen() {
                                 Text("⌄")
                             }
                             DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
-                                listOf(30, 60, 120, 180, 240, 300, 380).forEach { seconds ->
+                                listOf(60, 120, 180, 240, 300, 360).forEach { seconds ->
                                     DropdownMenuItem(
                                         text = { Text(if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
                                         onClick = { durationSeconds = seconds; durationExpanded = false }
@@ -419,10 +427,13 @@ fun MusicAiScreen() {
                             }
                         }
 
-                        OutlinedTextField(
-                            value = mood, onValueChange = { mood = it },
-                            label = { Text("Suasana / arahan musik") }, modifier = Modifier.fillMaxWidth()
-                        )
+                        Text("Suasana / mood • pilih beberapa", fontWeight = FontWeight.SemiBold)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            moodOptions.forEach { option ->
+                                FilterChip(selected = option in selectedMoods, onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option }, label = { Text(option) })
+                            }
+                        }
+                        OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth())
 
                         Button(
                             onClick = { generateSong() },
@@ -477,7 +488,7 @@ fun MusicAiScreen() {
                                 color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel,
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxWidth(),
-                                onClick = { selectTrack(index, false) }
+                                onClick = { selectTrack(index, true) }
                             ) {
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     if (track.imageUrl != null) {
