@@ -142,7 +142,9 @@ fun MusicAiScreen() {
 
                 var completedTracks: org.json.JSONArray? = null
                 var lastStatus = "QUEUED"
-                repeat(90) {
+                var attempts = 0
+                while (completedTracks == null && attempts < 90) {
+                    attempts++
                     Thread.sleep(5_000)
                     val statusRequest = Request.Builder()
                         .url("${backendUrl.trim().trimEnd('/')}/api/job/${jobId}")
@@ -159,9 +161,9 @@ fun MusicAiScreen() {
                         if (lastStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
                         if (lastStatus == "COMPLETED") completedTracks = job.optJSONArray("tracks")
                     }
-                    if (completedTracks != null) return@repeat
-                    activity.runOnUiThread { status = "Membuat lagu dengan Suno... (${lastStatus.lowercase()})" }
-                    if (completedTracks != null) return@repeat
+                    if (completedTracks == null) {
+                        activity.runOnUiThread { status = "Membuat lagu dengan Suno... (${lastStatus.lowercase()})" }
+                    }
                 }
                 val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
                 if (tracks.length() == 0) throw IllegalStateException("Suno selesai tetapi tidak mengembalikan audio.")
