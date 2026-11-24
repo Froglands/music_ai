@@ -176,8 +176,9 @@ fun MusicAiScreen() {
                         }
                         val job = JSONObject(body)
                         lastStatus = job.optString("status", "PROCESSING")
-                        if (lastStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
-                        if (lastStatus == "COMPLETED") completedTracks = job.optJSONArray("tracks")
+                        val normalizedStatus = lastStatus.uppercase()
+                        if (normalizedStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
+                        if (normalizedStatus == "COMPLETED" || normalizedStatus == "SUCCEEDED") completedTracks = job.optJSONArray("tracks")
                     }
                     if (completedTracks == null) {
                         activity.runOnUiThread { status = "Membuat lagu dengan Suno... (${lastStatus.lowercase()})" }
