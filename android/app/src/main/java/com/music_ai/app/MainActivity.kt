@@ -33,6 +33,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.border
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,8 +69,8 @@ class MainActivity : ComponentActivity() {
 fun MusicAiScreen() {
     val context = LocalContext.current
     val activity = context as ComponentActivity
-    val bg = Color(0xFF101018)
-    val panel = Color(0xFF1D1D2A)
+    val bg = Color(0xFF090B16)
+    val panel = Color(0xCC211D35)
     val accent = Color(0xFF9B7BFF)
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
@@ -348,26 +350,27 @@ fun MusicAiScreen() {
         ) { innerPadding ->
             Column(
                 Modifier.fillMaxSize()
-                    .background(bg)
+                    .background(Brush.linearGradient(listOf(Color(0xFF090B16), Color(0xFF17112B), Color(0xFF0B1725))))
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = accent, shape = RoundedCornerShape(14.dp)) {
+                    Surface(color = Color(0xFF8C68E8).copy(alpha = 0.22f), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBA6FF).copy(alpha = 0.35f))) {
                         Icon(Icons.Default.MusicNote, null, Modifier.padding(12.dp), tint = Color.White)
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text("MusicAI", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Text("AI Music Studio", color = Color.LightGray, fontSize = 12.sp)
+                        Text("CREATE YOUR SOUND  •  AI MUSIC STUDIO", color = Color(0xFFBBA6D9), fontSize = 10.sp, letterSpacing = 1.2.sp)
                     }
                 }
 
                 when (page) {
                     AppPage.STUDIO -> {
-                        Text("Buat lagu impianmu", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Studio kreatif", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                        Text("Wujudkan ide menjadi musik.", color = Color(0xFFB8B2C8), fontSize = 13.sp)
                         OutlinedTextField(
                             value = title, onValueChange = { title = it },
                             label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
