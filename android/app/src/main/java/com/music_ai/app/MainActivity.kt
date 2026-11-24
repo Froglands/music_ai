@@ -225,21 +225,56 @@ fun MusicAiScreen() {
         val bytes = audioBytes ?: return
         try {
             val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
-            val temp = java.io.File(context.cacheDir, "musicai-preview.$extension")
+            val temp = java.io.File(context.cacheDir, "musicai-preview-$selectedTrackIndex.$extension")
             temp.writeBytes(bytes)
             player?.release()
             player = MediaPlayer().apply {
                 setDataSource(temp.absolutePath)
                 prepare()
                 start()
-                setOnCompletionListener { it.release(); player = null }
+                isPlaying = true
+                playbackDuration = duration.coerceAtLeast(0)
+                playbackPosition = 0
+                setOnCompletionListener {
+                    isPlaying = false
+                    if (selectedTrackIndex < generatedTracks.lastIndex) activity.runOnUiThread { playNext() }
+                    else playbackPosition = playbackDuration
+                }
             }
-            status = "Memutar lagu..."
+            status = "Memutar: $title"
         } catch (e: Exception) {
+            isPlaying = false
             status = "Gagal memutar: ${e.message}"
         }
     }
 
+    fun selectTrack(index: Int, autoplay: Boolean = false) {
+        if (index !in generatedTracks.indices) return
+        selectedTrackIndex = index
+        audioBytes = generatedTracks[index].audioBytes
+        title = generatedTracks[index].title
+        playbackPosition = 0
+        player?.release()
+        player = null
+        isPlaying = false
+        if (autoplay) playAudio()
+    }
+
+    fun togglePlayback() {
+        val current = player
+        if (current == null) playAudio()
+        else if (isPlaying) { current.pause(); isPlaying = false; playbackPosition = current.currentPosition }
+        else { current.start(); isPlaying = true }
+    }
+
+    fun seekTo(position: Int) {
+        val target = position.coerceIn(0, playbackDuration.coerceAtLeast(0))
+        player?.seekTo(target)
+        playbackPosition = target
+    }
+
+    fun playNext() = selectTrack((selectedTrackIndex + 1).coerceAtMost(generatedTracks.lastIndex), true)
+    fun playPrevious() = selectTrack((selectedTrackIndex - 1).coerceAtLeast(0), true)
     fun saveAudio() {
         val bytes = audioBytes ?: return
         try {
@@ -260,7 +295,7 @@ fun MusicAiScreen() {
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
+    LaunchedEffect(player, isPlaying) {\n        while (isPlaying && player != null) {\n            playbackPosition = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)\n            delay(500)\n        }\n    }\n\n    MaterialTheme(colorScheme = darkColorScheme(
         background = bg, surface = panel, primary = accent,
         onBackground = Color.White, onSurface = Color.White
     )) {
