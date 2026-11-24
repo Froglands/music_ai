@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.music_ai.app"
+    namespace = "com.ryuzeeproject.music_ai"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.music_ai.app"
+        applicationId = "com.ryuzeeproject.music_ai"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
