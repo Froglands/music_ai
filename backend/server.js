@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { timingSafeEqual } from "node:crypto";
+import { put, del } from "@vercel/blob";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -182,6 +183,63 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   } catch (error) {
     console.error("MusicAPI submit failed:", error);
     return res.status(504).json({ error: "Koneksi ke MusicAPI timeout atau terputus." });
+  }
+});
+
+
+const coverLimiter = rateLimit({ windowMs: 60_000, limit: 2, standardHeaders: "draft-7", legacyHeaders: false });
+
+// Vercel Functions accept request bodies up to 4.5 MB. Keep this route below that limit.
+// The temporary public Blob URL is deleted as soon as MusicAPI confirms its own upload.
+app.post("/api/cover", coverLimiter, express.raw({ type: ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac", "audio/flac", "application/octet-stream"], limit: "4mb" }), async (req, res) => {
+  const activeApiKey = requestProviderKey(req);
+  if (!activeApiKey) return res.status(req.get("X-MusicAPI-Key") ? 401 : 503).json({ error: req.get("X-MusicAPI-Key") ? "Akses pengembang tidak valid untuk API key pengganti." : "Backend belum dikonfigurasi: MUSICAPI_API_KEY belum diatur di Vercel." });
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "File audio kosong atau format tidak didukung." });
+  const mime = (req.get("Content-Type") || "").split(";")[0].toLowerCase();
+  const ext = ({ "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mp4": "m4a", "audio/aac": "aac", "audio/flac": "flac", "application/octet-stream": "mp3" })[mime];
+  if (!ext) return res.status(415).json({ error: "Format audio harus MP3, WAV, M4A, AAC, atau FLAC." });
+  const title = cleanString(req.get("X-Cover-Title"), 80) || "MusicAI Cover";
+  const tags = cleanString(req.get("X-Cover-Tags"), 500) || "pop, modern";
+  const prompt = cleanString(req.get("X-Cover-Prompt"), 1000) || "Create a fresh cover arrangement while preserving the core melody and structure.";
+  const audioWeight = Math.max(0, Math.min(1, Number(req.get("X-Cover-Weight") || 0.6)));
+  let blobUrl = null;
+  try {
+    const blob = await put(`temporary-covers/${crypto.randomUUID()}.${ext}`, req.body, {
+      access: "public",
+      addRandomSuffix: true,
+      contentType: mime === "application/octet-stream" ? "audio/mpeg" : mime,
+      cacheControlMaxAge: 60
+    });
+    blobUrl = blob.url;
+    const upstream = await fetch("https://api.musicapi.ai/api/v1/sonic/upload-cover", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${activeApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: blob.url,
+        mv: "sonic-v5-5",
+        custom_mode: true,
+        prompt,
+        title,
+        tags,
+        audio_weight: audioWeight
+      }),
+      signal: AbortSignal.timeout(45_000)
+    });
+    const payload = await upstream.json().catch(() => ({}));
+    if (!upstream.ok || !payload.task_id) {
+      console.error("MusicAPI cover error:", upstream.status, JSON.stringify(payload).slice(0, 1000));
+      const status = upstream.status === 401 ? 401 : upstream.status === 402 || upstream.status === 403 ? 402 : upstream.status === 429 ? 429 : upstream.status >= 500 ? 502 : 400;
+      return res.status(status).json({ error: status === 402 ? "Kredit MusicAPI tidak cukup untuk membuat cover." : providerError(payload, "MusicAPI gagal memulai cover.") });
+    }
+    return res.status(202).json({ jobId: payload.task_id, status: "pending", title });
+  } catch (error) {
+    console.error("MusicAPI cover upload failed:", error);
+    const message = error?.message || "Upload cover gagal.";
+    return res.status(500).json({ error: message.includes("BLOB_READ_WRITE_TOKEN") ? "Penyimpanan cover belum terhubung. Hubungkan Vercel Blob ke project MusicAI lalu deploy ulang." : message });
+  } finally {
+    if (blobUrl) {
+      try { await del(blobUrl); } catch (error) { console.error("Temporary cover cleanup failed:", error); }
+    }
   }
 });
 
