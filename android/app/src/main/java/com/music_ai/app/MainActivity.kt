@@ -745,7 +745,6 @@ fun MusicAiScreen() {
                                 )
                             }
                         }
-                        Text(if (selectedProvider == "stability") "Stability menghasilkan musik instrumental tanpa vokal. Kredit gratis awal: 25; Stable Audio 2.5 memakai 20 kredit per generasi." else "Suno / MusicAPI mendukung lagu dengan lirik dan vokal.", color = Color.LightGray, fontSize = 11.sp)
                         OutlinedTextField(
                             value = title, onValueChange = { title = it },
                             label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
