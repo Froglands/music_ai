@@ -361,7 +361,7 @@ fun MusicAiScreen() {
                                 peak = maxOf(peak, kotlin.math.sqrt(real * real + imaginary * imaginary))
                             }
                             val db = 20.0 * kotlin.math.log10(peak / 128.0 + 0.00001)
-                            (((db + 58.0) / 58.0).coerceIn(0.0, 1.0).pow(0.72)).toFloat().coerceIn(0.035f, 1f)
+                            Math.pow(((db + 58.0) / 58.0).coerceIn(0.0, 1.0), 0.72).toFloat().coerceIn(0.035f, 1f)
                         }
                         activity.runOnUiThread {
                             spectrumLevels = levels
