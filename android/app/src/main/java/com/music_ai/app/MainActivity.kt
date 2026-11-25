@@ -2,6 +2,7 @@ package com.ryuzeeproject.music_ai
 
 import android.content.ContentValues
 import android.media.MediaPlayer
+import android.media.audiofx.Equalizer
 import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.provider.MediaStore
@@ -192,6 +193,10 @@ fun MusicAiScreen() {
     var isPlaying by remember { mutableStateOf(false) }
     var playbackPosition by remember { mutableIntStateOf(0) }
     var playbackDuration by remember { mutableIntStateOf(0) }
+    var autoDuration by remember { mutableStateOf(false) }
+    var equalizer by remember { mutableStateOf<Equalizer?>(null) }
+    var equalizerLevels by remember { mutableStateOf(List(12) { 0f }) }
+    var equalizerExpanded by remember { mutableStateOf(false) }
     var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
@@ -334,7 +339,8 @@ fun MusicAiScreen() {
                     put("vocal", vocal)
                     put("instrumental", vocal == "instrumental")
                     put("bpm", bpm.toInt())
-                    put("duration", durationSeconds)
+                    if (!autoDuration) put("duration", durationSeconds)
+                    put("durationMode", if (autoDuration) "auto" else "fixed")
                     put("mood", (selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { mood })
                 }
                 val client = OkHttpClient.Builder()
@@ -585,11 +591,23 @@ fun MusicAiScreen() {
             val extension = if (audioMimeType.contains("wav")) "wav" else "mp3"
             val temp = java.io.File(context.cacheDir, "musicai-preview-$selectedTrackIndex.$extension")
             temp.writeBytes(bytes)
+            equalizer?.release()
+            equalizer = null
             player?.release()
             player = MediaPlayer().apply {
                 setDataSource(temp.absolutePath)
                 prepare()
                 start()
+                runCatching {
+                    equalizer = Equalizer(0, audioSessionId).apply {
+                        enabled = true
+                        val range = bandLevelRange
+                        for (uiBand in 0 until 12) {
+                            val hardwareBand = (uiBand * (numberOfBands - 1) / 11f).toInt().toShort()
+                            setBandLevel(hardwareBand, (equalizerLevels[uiBand] * range[1] / 12f).toInt().toShort())
+                        }
+                    }
+                }
                 isPlaying = true
                 playbackDuration = duration.coerceAtLeast(0)
                 playbackPosition = 0
@@ -619,6 +637,8 @@ fun MusicAiScreen() {
         audioMimeType = "audio/mpeg"
         playbackPosition = 0
         playbackDuration = (generatedTracks[index].durationSeconds?.times(1000))?.toInt() ?: 0
+        equalizer?.release()
+        equalizer = null
         player?.release()
         player = null
         isPlaying = false
@@ -944,19 +964,25 @@ fun MusicAiScreen() {
                         if (!coverMode) Text("Durasi musik", fontWeight = FontWeight.SemiBold)
                         if (!coverMode) Text(when { selectedProvider == "stability" -> "Stability Stable Audio 2.5: instrumental hingga 3 menit."; selectedProvider == "lyria" -> "Lyria 3.5: durasi hingga sekitar 3 menit."; else -> "Durasi maksimal Suno / MusicAPI: 6 menit." }, color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
-                        if (!coverMode) Box {
-                            OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text("${durationSeconds / 60} menit ${durationSeconds % 60} detik", modifier = Modifier.weight(1f))
-                                Text("⌄")
+                        if (!coverMode) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                FilterChip(selected = !autoDuration, onClick = { autoDuration = false }, label = { Text("Atur sendiri") })
+                                FilterChip(selected = autoDuration, onClick = { autoDuration = true }, label = { Text("Terserah AI") })
                             }
-                            DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
-                                (if (selectedProvider == "lyria" || selectedProvider == "stability") listOf(30, 60, 90, 120, 180) else listOf(60, 120, 180, 240, 300, 360)).forEach { seconds ->
-                                    DropdownMenuItem(
-                                        text = { Text(if (seconds == 360) "Maksimal AI • 6 menit" else if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
-                                        onClick = { durationSeconds = seconds; durationExpanded = false }
-                                    )
+                            if (!autoDuration) Box {
+                                OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("${durationSeconds / 60} menit ${durationSeconds % 60} detik", modifier = Modifier.weight(1f))
+                                    Text("⌄")
                                 }
-                            }
+                                DropdownMenu(expanded = durationExpanded, onDismissRequest = { durationExpanded = false }) {
+                                    (if (selectedProvider == "lyria" || selectedProvider == "stability") listOf(30, 60, 90, 120, 180) else listOf(60, 120, 180, 240, 300, 360)).forEach { seconds ->
+                                        DropdownMenuItem(
+                                            text = { Text(if (seconds == 360) "Maksimal AI • 6 menit" else if (seconds % 60 == 0) "${seconds / 60} menit" else "${seconds} detik") },
+                                            onClick = { durationSeconds = seconds; durationExpanded = false }
+                                        )
+                                    }
+                                }
+                            } else Text("AI akan menentukan durasi yang paling sesuai dengan materi lagu.", color = Color.LightGray, fontSize = 11.sp)
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.Favorite, null, tint = Color(0xFFFFA6D7)); Text(if (coverMode) "ARAHAN GAYA COVER" else "SUASANA / MOOD", fontWeight = FontWeight.SemiBold, color = Color.White) }
@@ -1106,6 +1132,38 @@ fun MusicAiScreen() {
                                         Spacer(Modifier.width(6.dp))
                                         Text("Hapus")
                                     }
+                                }
+                            }
+                        }
+                        Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Equalizer 12-band", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { equalizerExpanded = !equalizerExpanded }) { Text(if (equalizerExpanded) "Tutup" else "Atur EQ") }
+                                }
+                                Text("Pengaturan suara saat pemutaran. Jumlah band fisik mengikuti dukungan perangkat.", color = Color.LightGray, fontSize = 11.sp)
+                                if (equalizerExpanded) {
+                                    val labels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "10k", "12k", "16k")
+                                    labels.forEachIndexed { index, label ->
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(label, modifier = Modifier.width(42.dp), fontSize = 11.sp, color = Color.White)
+                                            Slider(value = equalizerLevels[index], onValueChange = { value ->
+                                                equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
+                                                runCatching {
+                                                    equalizer?.let { eq ->
+                                                        val band = (index * (eq.numberOfBands - 1) / 11f).toInt().toShort()
+                                                        val range = eq.bandLevelRange
+                                                        eq.setBandLevel(band, (value * range[1] / 12f).toInt().coerceIn(range[0].toInt(), range[1].toInt()).toShort())
+                                                    }
+                                                }
+                                            }, valueRange = -12f..12f, modifier = Modifier.weight(1f))
+                                            Text(if (equalizerLevels[index] > 0) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(), modifier = Modifier.width(32.dp), fontSize = 10.sp)
+                                        }
+                                    }
+                                    TextButton(onClick = {
+                                        equalizerLevels = List(12) { 0f }
+                                        runCatching { equalizer?.let { eq -> for (band in 0 until eq.numberOfBands) eq.setBandLevel(band.toShort(), 0) } }
+                                    }) { Text("Reset EQ") }
                                 }
                             }
                         }
