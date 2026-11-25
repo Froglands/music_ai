@@ -162,8 +162,9 @@ fun MusicAiScreen() {
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val bg = Color(0xFF080B18)
-    val panel = Color(0x991A2038)
+    val panel = Color(0x661D2946)
     val accent = Color(0xFFB69CFF)
+    val glassBorder = Color(0x66D8D2FF)
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
     var title by remember { mutableStateOf(context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE).getString("title", "") ?: "") }
@@ -695,14 +696,14 @@ fun MusicAiScreen() {
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
-        background = bg, surface = panel, surfaceVariant = Color(0xAA303653), primary = accent,
+        background = bg, surface = Color(0xAA17213A), surfaceVariant = Color(0x77374461), primary = accent,
         secondary = Color(0xFF7DE3D1), onBackground = Color.White, onSurface = Color.White,
-        onSurfaceVariant = Color(0xFFD0D5E8), outline = Color(0x66D7DFFF)
+        onSurfaceVariant = Color(0xFFE0E4F2), outline = Color(0x88D7DFFF)
     )) {
         if (showGenreDialog) {
             AlertDialog(
                 onDismissRequest = { showGenreDialog = false },
-                containerColor = Color(0xEE171D32),
+                containerColor = Color(0xCC171F35),
                 title = { Text("Pilih genre", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -749,7 +750,7 @@ fun MusicAiScreen() {
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                NavigationBar(containerColor = Color(0x99151B30), tonalElevation = 0.dp) {
+                NavigationBar(containerColor = Color(0x661C2440), tonalElevation = 0.dp) {
                     NavigationBarItem(
                         selected = page == AppPage.STUDIO,
                         onClick = { page = AppPage.STUDIO },
@@ -773,7 +774,14 @@ fun MusicAiScreen() {
         ) { innerPadding ->
             Column(
                 Modifier.fillMaxSize()
-                    .background(Brush.linearGradient(listOf(Color(0xFF080B18), Color(0xFF17152D), Color(0xFF102B38), Color(0xFF090D1C))))
+                    .background(Brush.linearGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color(0xFF090B1A),
+                            0.32f to Color(0xFF211A3D),
+                            0.68f to Color(0xFF102F3B),
+                            1.0f to Color(0xFF090D1D)
+                        )
+                    ))
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 16.dp),
@@ -812,7 +820,7 @@ fun MusicAiScreen() {
                             DropdownMenu(
                                 expanded = providerMenuExpanded,
                                 onDismissRequest = { providerMenuExpanded = false },
-                                modifier = Modifier.fillMaxWidth(0.88f).background(Color(0xEE1A2036))
+                                modifier = Modifier.fillMaxWidth(0.88f).background(Color(0xCC1A2640))
                             ) {
                                 DropdownMenuItem(
                                     text = {
@@ -847,7 +855,7 @@ fun MusicAiScreen() {
                             }
                         }
                         if (coverMode) {
-                            Surface(color = Color(0x66333B5C), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88D7C8FF)), modifier = Modifier.fillMaxWidth()) {
+                            Surface(color = Color(0x55374461), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D7E7FF)), modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Text("AUDIO SUMBER", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     Text(if (coverSourceName.isBlank()) "Belum ada lagu dipilih" else "$coverSourceName • ${"%.1f".format(coverSourceDuration)} detik • ${coverSourceBytes?.size?.div(1024) ?: 0} KB", color = Color.White, fontSize = 13.sp)
@@ -867,13 +875,13 @@ fun MusicAiScreen() {
                                 value = lyrics, onValueChange = { lyrics = it },
                                 label = { Text("Lirik atau ide lagu") },
                                 modifier = Modifier.fillMaxWidth().height(240.dp),
-                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x553B4263), unfocusedContainerColor = Color(0x33343B59), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x887F8AAE)),
+                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x553B4968), unfocusedContainerColor = Color(0x333C4B68), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x887F8AAE)),
                                 placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\n") }
                             )
                             }
                         }
 
-                        Surface(color = Color(0x66323A5A), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88C8D9FF)), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0x55344762), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99C8E7FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
@@ -902,7 +910,7 @@ fun MusicAiScreen() {
                                 )
                             }
                         }
-                        if (!coverMode) Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        if (!coverMode) Surface(color = panel, shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 if (selectedProvider == "stability") "Stability hanya mendukung musik instrumental. Pilihan vokal dikunci ke Instrumen selama provider ini aktif." else "Pilih Pria, Wanita, Duet Pria + Wanita, atau Instrumen. Mode duet mengarahkan AI membuat vokal bergantian dan harmoni bersama.",
                                 color = Color.LightGray,
@@ -963,12 +971,12 @@ fun MusicAiScreen() {
                             aiTracks.takeLast(3).asReversed().forEach { indexedTrack ->
                                 val trackIndex = indexedTrack.index
                                 val track = indexedTrack.value
-                                Surface(color = panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(), onClick = { selectTrack(trackIndex, false); page = AppPage.PLAYER }) {
+                                Surface(color = panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth(), onClick = { selectTrack(trackIndex, false); page = AppPage.PLAYER }) {
                                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                         if (track.imageUrl != null) {
                                             AsyncImage(model = track.imageUrl, contentDescription = "Cover ${track.title}", modifier = Modifier.size(58.dp), contentScale = ContentScale.Crop)
                                         } else {
-                                            Surface(color = Color(0xFF39324D), shape = RoundedCornerShape(10.dp), modifier = Modifier.size(58.dp)) {
+                                            Surface(color = Color(0x88434A68), shape = RoundedCornerShape(10.dp), modifier = Modifier.size(58.dp)) {
                                                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(30.dp)) }
                                             }
                                         }
@@ -993,7 +1001,7 @@ fun MusicAiScreen() {
                         }
                         Text("KOLEKSI • ${generatedTracks.size} LAGU", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         if (generatedTracks.isEmpty()) {
-                            Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                            Surface(color = panel, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(42.dp))
                                     Text("Pustaka masih kosong", fontWeight = FontWeight.Bold)
@@ -1003,7 +1011,7 @@ fun MusicAiScreen() {
                         }
                         generatedTracks.forEachIndexed { index, track ->
                             var menuExpanded by remember(track.fileName) { mutableStateOf(false) }
-                            Surface(color = if (selectedTrackIndex == index) Color(0xFF30264A) else panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), onClick = {
+                            Surface(color = if (selectedTrackIndex == index) Color(0x99543E78) else panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), onClick = {
                                 if (index != selectedTrackIndex) selectTrack(index, false)
                                 page = AppPage.PLAYER
                             }) {
@@ -1042,7 +1050,7 @@ fun MusicAiScreen() {
                         }
                         val currentTrack = generatedTracks.getOrNull(selectedTrackIndex)
                         Text("SEDANG DIPUTAR", color = Color(0xFFD6C7FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Surface(color = Color(0xFF201A31), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0x88313B5B), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                 val playerCover = currentTrack?.coverFileName?.let { java.io.File(java.io.File(context.filesDir, "music_covers"), it) }?.takeIf { it.exists() }
                                 if (currentTrack?.imageUrl != null || playerCover != null) {
@@ -1055,7 +1063,7 @@ fun MusicAiScreen() {
                                 Text(currentTrack?.title ?: title.ifBlank { "Belum ada lagu dipilih" }, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                                 Text(currentTrack?.artist?.takeIf { it.isNotBlank() } ?: "MusicAI • Lagu", color = Color.LightGray, fontSize = 13.sp)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                                    Surface(color = Color(0xFF3A2D55), shape = RoundedCornerShape(50)) {
+                                    Surface(color = Color(0x885B4A80), shape = RoundedCornerShape(50)) {
                                         Text(if (currentTrack?.imageUrl != null || playerCover != null) "COVER ASLI" else "ARTWORK MUSICAI", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Color(0xFFD6C7FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
@@ -1085,7 +1093,7 @@ fun MusicAiScreen() {
                                 }
                             }
                         }
-                        Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
                                 Spacer(Modifier.width(12.dp))
