@@ -505,6 +505,64 @@ fun MusicAiScreen() {
     }
 
 
+    fun generateCover() {
+        if (busy) return
+        val source = coverSourceBytes ?: run { status = "Pilih file lagu dari HP terlebih dahulu."; return }
+        if (backendUrl.isBlank()) { status = "URL backend belum diatur."; page = AppPage.SETTINGS; return }
+        if (selectedProvider != "musicapi") { status = "Cover lagu saat ini menggunakan provider Suno / MusicAPI."; return }
+        val apiKeyOverride = if (developerUnlocked) developerApiKey.trim() else ""
+        val devCodeForRequest = if (apiKeyOverride.isNotBlank()) developerCode else ""
+        val coverTitle = title.trim().ifBlank { "MusicAI Cover" }
+        val tags = (selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() } + selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { "pop, modern" }
+        val prompt = "Create a new cover arrangement of the uploaded source song. Preserve its recognizable core melody, song structure and emotional identity while re-recording it in this style: $tags. ${customMood.trim()} Keep the arrangement polished and musically coherent."
+        busy = true
+        status = "Mengunggah audio sumber..."
+        Thread {
+            try {
+                val client = OkHttpClient.Builder().callTimeout(10, TimeUnit.MINUTES).connectTimeout(30, TimeUnit.SECONDS).readTimeout(10, TimeUnit.MINUTES).build()
+                val request = Request.Builder().url("${backendUrl.trim().trimEnd('/')}/api/cover")
+                    .header("Content-Type", coverSourceMime).header("X-Cover-Title", coverTitle)
+                    .header("X-Cover-Tags", tags).header("X-Cover-Prompt", prompt).header("X-Cover-Weight", coverAudioWeight.toString())
+                    .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }
+                    .post(source.toRequestBody(coverSourceMime.toMediaType())).build()
+                val jobId = client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) { val error = runCatching { JSONObject(body).optString("error") }.getOrNull().orEmpty(); throw IllegalStateException(error.ifBlank { "Server cover error ${response.code}: $body" }) }
+                    JSONObject(body).optString("jobId").takeIf { it.isNotBlank() } ?: throw IllegalStateException("Server tidak mengembalikan ID cover.")
+                }
+                activity.runOnUiThread { status = "AI sedang mengubah aransemen lagu..." }
+                var completedTracks: org.json.JSONArray? = null
+                var lastStatus = "QUEUED"
+                var attempts = 0
+                while (completedTracks == null && attempts < 90) {
+                    attempts++; Thread.sleep(5_000)
+                    val statusRequest = Request.Builder().url("${backendUrl.trim().trimEnd('/')}/api/job/$jobId").get()
+                        .apply { if (apiKeyOverride.isNotBlank()) header("X-MusicAI-Dev-Code", devCodeForRequest).header("X-MusicAPI-Key", apiKeyOverride) }.build()
+                    client.newCall(statusRequest).execute().use { response ->
+                        val body = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) throw IllegalStateException("Gagal memeriksa status cover: HTTP ${response.code}")
+                        val job = JSONObject(body); lastStatus = job.optString("status", "PROCESSING")
+                        when (lastStatus.lowercase()) { "failed" -> throw IllegalStateException(job.optString("error", "Generasi cover gagal.")); "completed", "succeeded" -> completedTracks = job.optJSONArray("tracks") }
+                    }
+                    if (completedTracks == null) activity.runOnUiThread { status = "Membuat cover... (${lastStatus.lowercase()})" }
+                }
+                val tracks = completedTracks ?: throw IllegalStateException("Cover belum selesai setelah 7,5 menit. Periksa kembali sebelum mengulang agar tidak terkena biaya dua kali.")
+                val downloaded = mutableListOf<MusicTrack>()
+                for (i in 0 until tracks.length()) {
+                    val item = tracks.getJSONObject(i); val audioUrl = item.optString("audioUrl"); if (!audioUrl.startsWith("https://")) continue
+                    val bytes = client.newCall(Request.Builder().url(audioUrl).get().build()).execute().use { response -> if (!response.isSuccessful) throw IllegalStateException("Gagal mengunduh hasil cover (${response.code})."); response.body?.bytes() ?: ByteArray(0) }
+                    if (bytes.isNotEmpty()) downloaded.add(MusicTrack(title = item.optString("title").ifBlank { "$coverTitle - Cover" }, audioBytes = bytes, imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") }, durationSeconds = if (item.has("duration")) item.optDouble("duration").toFloat() else coverSourceDuration, isAiGenerated = true))
+                }
+                if (downloaded.isEmpty()) throw IllegalStateException("Cover selesai tetapi file audio tidak ditemukan.")
+                activity.runOnUiThread {
+                    val firstNewTrack = generatedTracks.size; generatedTracks = saveMusicHistory(context, generatedTracks + downloaded)
+                    selectedTrackIndex = firstNewTrack; audioBytes = generatedTracks[selectedTrackIndex].audioBytes; title = generatedTracks[selectedTrackIndex].title
+                    audioMimeType = "audio/mpeg"; status = "${downloaded.size} cover berhasil dibuat dan disimpan ke Pustaka."
+                    busy = false; coverSourceBytes = null; coverSourceName = ""; page = AppPage.LIBRARY
+                }
+            } catch (e: Exception) { activity.runOnUiThread { status = "Gagal membuat cover: ${e.message ?: "Periksa koneksi dan backend."}"; busy = false } }
+        }.start()
+    }
     fun playAudio() {
         val bytes = audioBytes ?: return
         try {
