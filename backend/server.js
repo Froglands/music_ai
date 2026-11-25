@@ -250,7 +250,15 @@ app.post("/api/cover", coverLimiter, express.raw({ type: ["audio/mpeg", "audio/m
     if (!upstream.ok || !payload.task_id) {
       console.error("MusicAPI cover error:", upstream.status, JSON.stringify(payload).slice(0, 1000));
       const status = upstream.status === 401 ? 401 : upstream.status === 402 || upstream.status === 403 ? 402 : upstream.status === 429 ? 429 : upstream.status >= 500 ? 502 : 400;
-      return res.status(status).json({ error: status === 402 ? "Kredit MusicAPI tidak cukup untuk membuat cover." : providerError(payload, "MusicAPI gagal memulai cover.") });
+      const reasonCode = String(payload.reason_code || payload.code || "").toLowerCase();
+      const upstreamMessage = String(payload.message || payload.error || "").toLowerCase();
+      const isCopyrightBlock = reasonCode === "copyright" || upstreamMessage.includes("matches an existing recording") || upstreamMessage.includes("copyright");
+      const userMessage = status === 402
+        ? "Kredit MusicAPI tidak mencukupi untuk membuat cover. Isi ulang kredit atau periksa paket API."
+        : isCopyrightBlock
+          ? "Suno menolak audio sumber karena terdeteksi cocok dengan rekaman yang sudah ada di katalognya (pemeriksaan hak cipta). Gunakan rekaman milik sendiri atau audio yang memiliki izin dan tidak cocok dengan rekaman katalog tersebut."
+          : providerError(payload, "MusicAPI gagal memulai cover.");
+      return res.status(status).json({ error: userMessage, ...(isCopyrightBlock ? { reason: "copyright" } : {}) });
     }
     return res.status(202).json({ jobId: payload.task_id, status: "pending", title });
   } catch (error) {
