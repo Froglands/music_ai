@@ -365,40 +365,38 @@ fun MusicAiScreen() {
                 // Keep the real playback amplitude; NORMALIZED can flatten band-to-band dynamics.
                 effect.scalingMode = Visualizer.SCALING_MODE_AS_PLAYED
                 effect.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                    override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
-
-                    override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                        if (fft == null || fft.size < 16) return
-                        // Android packs FFT as DC, Nyquist, then real/imaginary pairs.
-                        val binCount = fft.size / 2
+                    override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                        if (waveform == null || waveform.size < 28) return
+                        // Waveform capture is more widely supported than FFT on some vendor audio effects.
+                        // Split the live PCM snapshot into 28 windows and measure each window's RMS.
                         val levels = List(28) { index ->
-                            val low = kotlin.math.exp(index * kotlin.math.ln((binCount - 1).toDouble()) / 28.0)
-                                .toInt().coerceIn(1, binCount - 2)
-                            val high = kotlin.math.exp((index + 1) * kotlin.math.ln((binCount - 1).toDouble()) / 28.0)
-                                .toInt().coerceIn(low + 1, binCount - 1)
+                            val start = index * waveform.size / 28
+                            val end = ((index + 1) * waveform.size / 28).coerceAtLeast(start + 1)
                             var energy = 0.0
-                            var samples = 0
-                            for (bin in low until high) {
-                                val real = fft[bin * 2].toInt().toDouble()
-                                val imaginary = fft[bin * 2 + 1].toInt().toDouble()
-                                energy += real * real + imaginary * imaginary
-                                samples++
+                            var peak = 0.0
+                            var count = 0
+                            for (sampleIndex in start until end) {
+                                val amplitude = (waveform[sampleIndex].toInt() and 0xFF) - 128
+                                val absolute = kotlin.math.abs(amplitude).toDouble()
+                                energy += absolute * absolute
+                                peak = maxOf(peak, absolute)
+                                count++
                             }
-                            val rms = if (samples > 0) kotlin.math.sqrt(energy / samples) else 0.0
-                            val db = 20.0 * kotlin.math.log10(rms / 128.0 + 0.000001)
-                            // A wider dynamic range keeps quiet bands visible while preserving musical movement.
-                            Math.pow(((db + 72.0) / 72.0).coerceIn(0.0, 1.0), 0.62)
-                                .toFloat().coerceIn(0.025f, 1f)
+                            val rms = if (count > 0) kotlin.math.sqrt(energy / count) else 0.0
+                            val level = (rms * 0.75 + peak * 0.25) / 96.0
+                            Math.pow(level.coerceIn(0.0, 1.0), 0.68).toFloat().coerceIn(0.025f, 1f)
                         }
                         activity.runOnUiThread {
                             spectrumLevels = levels
                             if (!spectrumFrameReceived) {
                                 spectrumFrameReceived = true
-                                spectrumStatus = "Spectrum LIVE • dinamika audio terbaca."
+                                spectrumStatus = "Spectrum LIVE • waveform audio terbaca."
                             }
                         }
                     }
-                }, (Visualizer.getMaxCaptureRate() / 2).coerceAtLeast(8000), false, true)
+
+                    override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) = Unit
+                }, (Visualizer.getMaxCaptureRate() / 2).coerceAtLeast(8000), true, false)
                 effect.enabled = true
                 visualizer = effect
                 spectrumStatus = "Visualizer tersambung. Membaca sinyal audio..."
@@ -424,7 +422,7 @@ fun MusicAiScreen() {
         if (spectrumEnabled && isPlaying && hasAudioPermission && spectrumAudioSessionId > 0) {
             delay(1800)
             if (!spectrumFrameReceived) {
-                spectrumStatus = "Visualizer aktif tetapi belum menerima FFT. Coba hentikan dan putar ulang lagu."
+                spectrumStatus = "Visualizer belum menerima waveform audio. Coba putar ulang; jika tetap gagal, perangkat membatasi efek audio."
             }
         }
     }
@@ -1569,7 +1567,7 @@ fun MusicAiScreen() {
                                         Surface(
                                             color = Color(0x553E4C70),
                                             shape = RoundedCornerShape(14.dp),
-                                            modifier = Modifier.width(82.dp).height(218.dp)
+                                            modifier = Modifier.width(82.dp).height(256.dp)
                                         ) {
                                             Column(
                                                 Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
@@ -1582,7 +1580,7 @@ fun MusicAiScreen() {
                                                     color = Color(0xFFD9CCFF), fontSize = 11.sp, fontWeight = FontWeight.Bold
                                                 )
                                                 Box(
-                                                    Modifier.width(48.dp).height(132.dp),
+                                                    Modifier.width(52.dp).height(170.dp),
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Slider(
@@ -1593,7 +1591,7 @@ fun MusicAiScreen() {
                                                         },
                                                         valueRange = -12f..12f,
                                                         enabled = equalizerEnabled,
-                                                        modifier = Modifier.width(128.dp).height(36.dp).rotate(-90f)
+                                                        modifier = Modifier.width(164.dp).height(36.dp).rotate(-90f)
                                                     )
                                                 }
                                                 Text("−12 / +12", color = Color.Gray, fontSize = 8.sp)
