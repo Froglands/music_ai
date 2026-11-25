@@ -309,6 +309,23 @@ fun MusicAiScreen() {
     var developerUnlocked by remember { mutableStateOf(false) }
     var developerVerifying by remember { mutableStateOf(false) }
     var developerMessage by remember { mutableStateOf("") }
+    var aiLogs by remember {
+        val saved = context.getSharedPreferences("musicai_dev_logs", android.content.Context.MODE_PRIVATE).getString("entries", "[]")
+        mutableStateOf(runCatching {
+            val array = org.json.JSONArray(saved)
+            List(array.length()) { index -> array.optString(index) }.filter { it.isNotBlank() }.takeLast(30)
+        }.getOrDefault(emptyList()))
+    }
+    fun addAiLog(message: String) {
+        val entry = "${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}  $message"
+        activity.runOnUiThread {
+            aiLogs = (aiLogs + entry).takeLast(30)
+            val array = org.json.JSONArray()
+            aiLogs.forEach { array.put(it) }
+            context.getSharedPreferences("musicai_dev_logs", android.content.Context.MODE_PRIVATE)
+                .edit().putString("entries", array.toString()).apply()
+        }
+    }
     var developerApiKey by remember { mutableStateOf(loadDeveloperApiKey(context)) }
     var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
     var developerStabilityApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "stability")) }
@@ -530,6 +547,7 @@ fun MusicAiScreen() {
         val devCodeForRequest = if (apiKeyOverride.isNotBlank() || lyriaKeyOverride.isNotBlank() || stabilityKeyOverride.isNotBlank()) developerCode else ""
         busy = true
         status = "Mengirim permintaan ke server..."
+        addAiLog("Mulai generasi • provider: ${selectedProvider.uppercase()} • judul: ${title.ifBlank { "Tanpa judul" }}")
         Thread {
             try {
                 val json = JSONObject().apply {
@@ -662,6 +680,7 @@ fun MusicAiScreen() {
                         JSONObject(responseText).optString("jobId").takeIf { it.isNotBlank() }
                             ?: throw IllegalStateException("Server tidak mengembalikan ID generasi.")
                     }
+                    addAiLog("Job MusicAPI dibuat • ID: $jobId")
                     var completedTracks: org.json.JSONArray? = null
                     var lastStatus = "QUEUED"
                     var attempts = 0
@@ -685,7 +704,10 @@ fun MusicAiScreen() {
                             if (normalizedStatus == "FAILED") throw IllegalStateException(job.optString("error", "Generasi lagu gagal."))
                             if (normalizedStatus == "COMPLETED" || normalizedStatus == "SUCCEEDED") completedTracks = job.optJSONArray("tracks")
                         }
-                        if (completedTracks == null) activity.runOnUiThread { status = "Membuat lagu dengan MusicAPI... (${lastStatus.lowercase()})" }
+                        if (completedTracks == null) {
+                            addAiLog("Status job: ${lastStatus.uppercase()}")
+                            activity.runOnUiThread { status = "Membuat lagu dengan MusicAPI... (${lastStatus.lowercase()})" }
+                        }
                     }
                     val tracks = completedTracks ?: throw IllegalStateException("Generasi belum selesai setelah 7,5 menit. Coba periksa kembali nanti.")
                     if (tracks.length() == 0) throw IllegalStateException("MusicAPI selesai tetapi tidak mengembalikan audio.")
@@ -716,10 +738,12 @@ fun MusicAiScreen() {
                     title = generatedTracks[selectedTrackIndex].title
                     audioMimeType = "audio/mpeg"
                     status = "${downloaded.size} hasil audio berhasil dibuat dengan ${when { useStability -> "Stability AI"; useLyria -> "Google Lyria"; else -> "MusicAPI / Suno" }} dan siap dipilih."
+                    addAiLog("SUKSES • ${downloaded.size} file audio diterima dan disimpan")
                     busy = false
                     page = AppPage.LIBRARY
                 }
             } catch (e: Exception) {
+                addAiLog("GAGAL • ${e.message ?: e.javaClass.simpleName}")
                 activity.runOnUiThread {
                     status = "Gagal: ${e.message ?: "Periksa koneksi dan server."}"
                     busy = false
@@ -1192,10 +1216,16 @@ fun MusicAiScreen() {
                             } else Text("AI akan menentukan durasi yang paling sesuai dengan materi lagu.", color = Color.LightGray, fontSize = 11.sp)
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.Favorite, null, tint = Color(0xFFFFA6D7)); Text(if (coverMode) "ARAHAN GAYA COVER" else "SUASANA / MOOD", fontWeight = FontWeight.SemiBold, color = Color.White) }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.Equalizer, null, tint = accent); Text(if (coverMode) "ARAHAN GAYA COVER" else "SUASANA / MOOD", fontWeight = FontWeight.SemiBold, color = Color.White) }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             moodOptions.forEach { option ->
-                                FilterChip(selected = option in selectedMoods, onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option }, label = { Text(option, color = if (option in selectedMoods) Color.White else Color(0xFFE3E7F5)) }, leadingIcon = { Icon(Icons.Default.Favorite, null, tint = if (option in selectedMoods) Color(0xFFFFA6D7) else Color(0xFFB9C3DC), modifier = Modifier.size(14.dp)) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0x995E4A91), containerColor = Color(0x55323D5B), labelColor = Color(0xFFE3E7F5), iconColor = Color(0xFFB9C3DC), selectedLabelColor = Color.White, selectedLeadingIconColor = Color(0xFFFFA6D7)))
+                                FilterChip(
+                                    selected = option in selectedMoods,
+                                    onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option },
+                                    label = { Text(option, color = if (option in selectedMoods) Color.White else Color(0xFFE3E7F5)) },
+                                    leadingIcon = { Icon(Icons.Default.MusicNote, null, tint = if (option in selectedMoods) accent else Color(0xFFB9C3DC), modifier = Modifier.size(14.dp)) },
+                                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0x995E4A91), containerColor = Color(0x55323D5B), labelColor = Color(0xFFE3E7F5), iconColor = Color(0xFFB9C3DC), selectedLabelColor = Color.White, selectedLeadingIconColor = accent)
+                                )
                             }
                         }
                         OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent, focusedContainerColor = Color(0x55424C70), unfocusedContainerColor = Color(0x33424C70)))
@@ -1563,6 +1593,32 @@ fun MusicAiScreen() {
                                     }
                                 }
                                 if (developerUnlocked) {
+                                Surface(color = Color(0x55313D5B), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Equalizer, null, tint = accent, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("LOG AI / AKTIVITAS GENERASI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                            TextButton(onClick = {
+                                                aiLogs = emptyList()
+                                                context.getSharedPreferences("musicai_dev_logs", android.content.Context.MODE_PRIVATE).edit().remove("entries").apply()
+                                            }, enabled = aiLogs.isNotEmpty()) { Text("Bersihkan", fontSize = 11.sp) }
+                                        }
+                                        Text("Catatan proses request, status job, hasil, dan error. Tidak menyimpan API key atau isi kredensial.", color = Color.LightGray, fontSize = 10.sp)
+                                        if (aiLogs.isEmpty()) {
+                                            Text("Belum ada aktivitas AI.", color = Color.Gray, fontSize = 11.sp)
+                                        } else {
+                                            Column(
+                                                Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
+                                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                aiLogs.asReversed().forEach { entry ->
+                                                    Text(entry, color = if (entry.contains("GAGAL")) Color(0xFFFF9A9A) else if (entry.contains("SUKSES")) Color(0xFF91D9A8) else Color(0xFFD8DDF0), fontSize = 10.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 Text(
                                     "API key pengganti hanya dipakai saat mode pengembang terbuka. Key disimpan terenkripsi di perangkat dan dikirim ke backend melalui HTTPS; Vercel environment variable tidak diubah.",
                                     color = Color.LightGray, fontSize = 12.sp
