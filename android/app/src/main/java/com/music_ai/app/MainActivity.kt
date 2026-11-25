@@ -199,6 +199,7 @@ fun MusicAiScreen() {
     var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
     var developerStabilityApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "stability")) }
     var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
+    var providerMenuExpanded by remember { mutableStateOf(false) }
     var showLyriaCostConfirm by remember { mutableStateOf(false) }
     var apiKeyVisible by remember { mutableStateOf(false) }
     var backendUrl by remember {
@@ -696,10 +697,53 @@ fun MusicAiScreen() {
                     AppPage.STUDIO -> {
                         Text("Studio kreatif", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Text("Wujudkan ide menjadi musik.", color = Color(0xFFB8B2C8), fontSize = 13.sp)
-                        Text("PILIH AI GENERATOR", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = selectedProvider == "musicapi", onClick = { selectedProvider = "musicapi"; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply() }, label = { Text("Suno") }, modifier = Modifier.weight(1f))
-                            FilterChip(selected = selectedProvider == "stability", onClick = { selectedProvider = "stability"; vocal = "instrumental"; if (durationSeconds > 180) durationSeconds = 180; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "stability").apply() }, label = { Text("Stability") }, modifier = Modifier.weight(1f))
+                        Text("AI GENERATOR", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
+                        Box(Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { providerMenuExpanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp)
+                            ) {
+                                Text(if (selectedProvider == "stability") "Stability AI • Stable Audio 2.5" else "Suno • MusicAPI", modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
+                                Text("⌄", fontSize = 18.sp)
+                            }
+                            DropdownMenu(
+                                expanded = providerMenuExpanded,
+                                onDismissRequest = { providerMenuExpanded = false },
+                                modifier = Modifier.fillMaxWidth(0.88f).background(Color(0xFF191821))
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text("Suno", fontWeight = FontWeight.SemiBold)
+                                            Text("Lagu dengan lirik dan vokal", color = Color.LightGray, fontSize = 11.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedProvider = "musicapi"
+                                        providerMenuExpanded = false
+                                        context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply()
+                                    },
+                                    trailingIcon = { if (selectedProvider == "musicapi") Text("✓", color = Color(0xFF70D7A0)) }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text("Stability AI", fontWeight = FontWeight.SemiBold)
+                                            Text("Stable Audio 2.5 • Instrumental", color = Color.LightGray, fontSize = 11.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedProvider = "stability"
+                                        vocal = "instrumental"
+                                        if (durationSeconds > 180) durationSeconds = 180
+                                        providerMenuExpanded = false
+                                        context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "stability").apply()
+                                    },
+                                    trailingIcon = { if (selectedProvider == "stability") Text("✓", color = Color(0xFF70D7A0)) }
+                                )
+                            }
                         }
                         Text(if (selectedProvider == "stability") "Stability menghasilkan musik instrumental tanpa vokal. Kredit gratis awal: 25; Stable Audio 2.5 memakai 20 kredit per generasi." else "Suno / MusicAPI mendukung lagu dengan lirik dan vokal.", color = Color.LightGray, fontSize = 11.sp)
                         OutlinedTextField(
@@ -741,12 +785,17 @@ fun MusicAiScreen() {
                         Text("Vokal", fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("male" to "Pria", "female" to "Wanita", "duet" to "Duet", "instrumental" to "Instrumen").forEach { (value, label) ->
-                                FilterChip(selected = vocal == value, onClick = { vocal = value }, label = { Text(label) })
+                                FilterChip(
+                                    selected = vocal == value,
+                                    onClick = { if (selectedProvider != "stability") vocal = value },
+                                    enabled = selectedProvider != "stability" || value == "instrumental",
+                                    label = { Text(label) }
+                                )
                             }
                         }
                         Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Pilih Pria, Wanita, Duet Pria + Wanita, atau Instrumen. Mode duet mengarahkan AI membuat vokal bergantian dan harmoni bersama.",
+                                if (selectedProvider == "stability") "Stability hanya mendukung musik instrumental. Pilihan vokal dikunci ke Instrumen selama provider ini aktif." else "Pilih Pria, Wanita, Duet Pria + Wanita, atau Instrumen. Mode duet mengarahkan AI membuat vokal bergantian dan harmoni bersama.",
                                 color = Color.LightGray,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(12.dp)
