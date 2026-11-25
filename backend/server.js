@@ -69,7 +69,8 @@ async function generateLyria(req, res) {
   const genre = cleanString(req.body?.genre, 160) || "Pop";
   const mood = cleanString(req.body?.mood, 200) || "uplifting";
   const bpm = Number(req.body?.bpm || 110);
-  const duration = Math.max(60, Math.min(180, Math.round(Number(req.body?.duration || 120))));
+  const autoDuration = req.body?.durationMode === "auto";
+  const duration = autoDuration ? null : Math.max(60, Math.min(180, Math.round(Number(req.body?.duration || 120))));
   const vocal = req.body?.vocal || "female";
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
   if (!lyrics || lyrics.length < 10) return res.status(400).json({ error: "Masukkan lirik atau ide lagu minimal 10 karakter." });
@@ -79,7 +80,7 @@ async function generateLyria(req, res) {
     vocal === "duet" ? "Male and female duet vocals, alternating verses and harmonized chorus." :
     "Female lead singing voice.";
   const prompt = [
-    `Create an original full-length song, approximately ${duration} seconds (${Math.floor(duration / 60)} minutes and ${duration % 60} seconds).`,
+    autoDuration ? "Create an original full-length song. Choose the most suitable natural duration for the lyrics and musical arrangement." : `Create an original full-length song, approximately ${duration} seconds (${Math.floor(duration / 60)} minutes and ${duration % 60} seconds).`,
     `Title: ${title}.`,
     `Genre and arrangement: ${genre}.`,
     `Mood: ${mood}.`,
@@ -119,7 +120,7 @@ async function generateLyria(req, res) {
     return res.json({
       provider: "lyria-3.5",
       status: "completed",
-      tracks: [{ title, audioBase64: audioData, mimeType: "audio/mpeg", duration, lyrics: outputText }]
+      tracks: [{ title, audioBase64: audioData, mimeType: "audio/mpeg", ...(duration ? { duration } : {}), lyrics: outputText }]
     });
   } catch (error) {
     console.error("Lyria request failed:", error);
@@ -140,7 +141,8 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   const hasLyricsStructure = /\[(verse|chorus|bridge|intro|outro|pre-chorus)/i.test(lyrics) || lyrics.split(/\r?\n/).filter(line => line.trim()).length >= 5;
   const inputMode = req.body?.inputMode === "prompt" || req.body?.inputMode === "auto" && !hasLyricsStructure ? "prompt" : "lyrics";
   const vocal = req.body?.vocal === "male" ? "m" : req.body?.vocal === "female" ? "f" : null;
-  const duration = Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
+  const autoDuration = req.body?.durationMode === "auto";
+  const duration = autoDuration ? null : Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
 
   if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: inputMode === "prompt" ? "Tulis ide lagu minimal 10 karakter." : "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
@@ -163,7 +165,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
             ? { auto_lyrics: true, prompt: lyrics, vocal_gender: vocal }
             : { prompt: lyrics, ...(vocal ? { vocal_gender: vocal } : {}) }),
         tags,
-        duration
+        ...(duration ? { duration } : {})
       }),
       signal: AbortSignal.timeout(30_000)
     });
