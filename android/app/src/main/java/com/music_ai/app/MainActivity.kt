@@ -31,6 +31,11 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Equalizer
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.material3.*
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -58,7 +63,7 @@ import java.util.concurrent.TimeUnit
 
 // Backend URL is configured and saved from the Settings screen.
 
-private enum class AppPage { STUDIO, LIBRARY, PLAYER, SETTINGS }
+private enum class AppPage { STUDIO, LIBRARY, PLAYER, EQUALIZER, SETTINGS }
 
 private data class MusicTrack(val title: String, val audioBytes: ByteArray, val imageUrl: String? = null, val durationSeconds: Float? = null, val fileName: String? = null, val coverFileName: String? = null, val artist: String? = null, val isAiGenerated: Boolean = false)
 
@@ -155,6 +160,50 @@ private fun formatTime(milliseconds: Int): String {
     return "%d:%02d".format(seconds / 60, seconds % 60)
 }
 
+@Composable
+private fun RotaryKnob(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    label: String,
+    display: String,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit
+) {
+    val trackColor = Color(0xFF59627D)
+    val activeColor = Color(0xFFB69CFF)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(116.dp).pointerInput(enabled, valueRange) {
+            if (enabled) detectDragGestures { change, drag ->
+                change.consume()
+                val delta = -drag.y / 150f * (valueRange.endInclusive - valueRange.start)
+                onValueChange((value + delta).coerceIn(valueRange))
+            }
+        }, contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val stroke = 8.dp.toPx()
+                val diameter = size.minDimension - stroke
+                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+                drawArc(trackColor, 135f, 270f, false, topLeft, androidx.compose.ui.geometry.Size(diameter, diameter), style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                val fraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+                drawArc(activeColor, 135f, 270f * fraction, false, topLeft, androidx.compose.ui.geometry.Size(diameter, diameter), style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                val angle = Math.toRadians((135f + 270f * fraction).toDouble())
+                val radius = diameter / 2f
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val inner = Offset(center.x + kotlin.math.cos(angle).toFloat() * (radius * 0.48f), center.y + kotlin.math.sin(angle).toFloat() * (radius * 0.48f))
+                val outer = Offset(center.x + kotlin.math.cos(angle).toFloat() * (radius * 0.82f), center.y + kotlin.math.sin(angle).toFloat() * (radius * 0.82f))
+                drawCircle(Color(0xFF202943), radius * 0.58f, center)
+                drawLine(activeColor, inner, outer, strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawCircle(activeColor, 3.dp.toPx(), outer)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(display, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(label, color = Color(0xFFC9B8FF), fontSize = 9.sp)
+            }
+        }
+        Text(if (enabled) "POTENSIO" else "NONAKTIF", color = if (enabled) Color.LightGray else Color.Gray, fontSize = 9.sp)
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -202,6 +251,8 @@ fun MusicAiScreen() {
         mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("equalizer_enabled", false))
     }
     var equalizerExpanded by remember { mutableStateOf(true) }
+    var subwooferGain by remember { mutableFloatStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getFloat("subwoofer_gain", 0f)) }
+    var subwooferFrequency by remember { mutableFloatStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getFloat("subwoofer_frequency", 80f)) }
     var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
@@ -329,7 +380,8 @@ fun MusicAiScreen() {
                 .map { equalizerLevels[it] }
             val averageDb = if (values.isEmpty()) 0f else values.average().toFloat()
             // Keep boosts/cuts moderate to reduce clipping and perceived loudness pumping.
-            val safeDb = averageDb.coerceIn(-6f, 6f)
+            val subGain = if (hardwareFrequencies[hardwareBand] <= subwooferFrequency) subwooferGain else 0f
+            val safeDb = (averageDb + subGain).coerceIn(-6f, 6f)
             val level = (safeDb * 100f).toInt().coerceIn(range[0].toInt(), range[1].toInt())
             eq.setBandLevel(hardwareBand.toShort(), level.toShort())
         }
@@ -1110,6 +1162,7 @@ fun MusicAiScreen() {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { page = AppPage.LIBRARY }) { Text("‹  Pustaka") }
                             Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { page = AppPage.EQUALIZER }) { Icon(Icons.Default.Equalizer, "Buka equalizer", tint = accent) }
                             TextButton(onClick = { if (selectedTrackIndex in generatedTracks.indices) trackToDelete = selectedTrackIndex }) {
                                 Icon(Icons.Default.Delete, null)
                                 Text("Hapus")
@@ -1160,58 +1213,6 @@ fun MusicAiScreen() {
                                 }
                             }
                         }
-                        Surface(color = Color(0x66313D5B), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D8C7FF)), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("EQUALIZER", fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text("12-band • kontrol suara", color = Color.LightGray, fontSize = 11.sp)
-                                    }
-                                    Text(if (equalizerEnabled) "ON" else "OFF", color = if (equalizerEnabled) Color(0xFF81D9A7) else Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                    Switch(checked = equalizerEnabled, onCheckedChange = { enabled ->
-                                        equalizerEnabled = enabled
-                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("equalizer_enabled", enabled).apply()
-                                        runCatching { equalizer?.enabled = enabled }
-                                    })
-                                }
-                                Text("Geser band ke atas/bawah. Pengaturan tetap tersimpan saat EQ dimatikan.", color = Color.LightGray, fontSize = 11.sp)
-                                val labels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "10k", "12k", "16k")
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.Bottom
-                                ) {
-                                    labels.forEachIndexed { index, label ->
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(46.dp)) {
-                                            Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                                            Box(Modifier.width(46.dp).height(116.dp), contentAlignment = Alignment.Center) {
-                                                Slider(
-                                                    value = equalizerLevels[index],
-                                                    onValueChange = { value ->
-                                                        equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
-                                                        if (equalizerEnabled) runCatching { equalizer?.let { applyEqualizerSettings(it) } }
-                                                    },
-                                                    valueRange = -6f..6f,
-                                                    enabled = equalizerEnabled,
-                                                    modifier = Modifier.width(116.dp).height(32.dp).graphicsLayer { rotationZ = 270f }
-                                                )
-                                            }
-                                            Text(
-                                                if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(),
-                                                color = Color(0xFFD9CCFF), fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                    TextButton(onClick = {
-                                        equalizerLevels = List(12) { 0f }
-                                        runCatching { equalizer?.let { applyEqualizerSettings(it) } }
-                                    }) { Text("Reset EQ") }
-                                }
-                                Text("Catatan: jumlah band independen yang benar-benar diproses mengikuti hardware audio HP.", color = Color.Gray, fontSize = 10.sp)
-                            }
-                        }
                         Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
@@ -1224,6 +1225,77 @@ fun MusicAiScreen() {
                             }
                         }
                         Text(status, color = Color.LightGray, fontSize = 12.sp)
+                    }
+
+                    AppPage.EQUALIZER -> {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { page = AppPage.PLAYER }) { Text("‹  Pemutar") }
+                            Spacer(Modifier.weight(1f))
+                            Text("EQUALIZER", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Surface(color = Color(0x66313D5B), shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D8C7FF)), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("12-BAND EQUALIZER", fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("Atur karakter suara sesuai selera", color = Color.LightGray, fontSize = 11.sp)
+                                    }
+                                    Text(if (equalizerEnabled) "ON" else "OFF", color = if (equalizerEnabled) Color(0xFF81D9A7) else Color.LightGray, fontWeight = FontWeight.Bold)
+                                    Switch(checked = equalizerEnabled, onCheckedChange = { enabled ->
+                                        equalizerEnabled = enabled
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("equalizer_enabled", enabled).apply()
+                                        runCatching { equalizer?.enabled = enabled }
+                                    })
+                                }
+                                Divider(color = Color(0x66D8C7FF))
+                                Text("SUBWOOFER", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                                    RotaryKnob(value = subwooferGain, valueRange = 0f..6f, label = "LEVEL", display = "+${subwooferGain.toInt()} dB", enabled = equalizerEnabled, onValueChange = {
+                                        subwooferGain = it
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_gain", it).apply()
+                                        if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                    })
+                                    RotaryKnob(value = subwooferFrequency, valueRange = 40f..160f, label = "FREQ", display = "${subwooferFrequency.toInt()} Hz", enabled = equalizerEnabled, onValueChange = {
+                                        subwooferFrequency = it
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_frequency", it).apply()
+                                        if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                    })
+                                }
+                                Text("Level menambah bass pada band rendah. Frekuensi menentukan batas band yang ikut diperkuat; hasil akhirnya mengikuti kemampuan equalizer hardware HP.", color = Color.LightGray, fontSize = 11.sp)
+                                Divider(color = Color(0x66D8C7FF))
+                                Text("12-BAND • GESER HORIZONTAL", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Geser slider ke kiri/kanan. Rentang gain -6 sampai +6 dB.", color = Color.LightGray, fontSize = 11.sp)
+                                val labels = listOf("31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz")
+                                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    labels.forEachIndexed { index, label ->
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text(label, color = Color.White, fontSize = 11.sp, modifier = Modifier.width(54.dp))
+                                            Slider(
+                                                value = equalizerLevels[index],
+                                                onValueChange = { value ->
+                                                    equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
+                                                    if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                                },
+                                                valueRange = -6f..6f,
+                                                enabled = equalizerEnabled,
+                                                modifier = Modifier.weight(1f).height(42.dp)
+                                            )
+                                            Text(if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(), color = Color(0xFFD9CCFF), fontSize = 11.sp, modifier = Modifier.width(28.dp))
+                                        }
+                                    }
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Perubahan diterapkan langsung saat audio diputar.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = {
+                                        equalizerLevels = List(12) { 0f }
+                                        subwooferGain = 0f
+                                        subwooferFrequency = 80f
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_gain", 0f).putFloat("subwoofer_frequency", 80f).apply()
+                                        runCatching { equalizer?.let { applyEqualizerSettings(it) } }
+                                    }) { Text("Reset") }
+                                }
+                            }
+                        }
                     }
 
                     AppPage.SETTINGS -> {
