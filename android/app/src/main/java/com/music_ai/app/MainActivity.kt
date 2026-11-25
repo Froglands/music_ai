@@ -3,6 +3,7 @@ package com.ryuzeeproject.music_ai
 import android.content.ContentValues
 import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
+import android.media.audiofx.BassBoost
 import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.provider.MediaStore
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -172,13 +174,42 @@ private fun RotaryKnob(
     val trackColor = Color(0xFF59627D)
     val activeColor = Color(0xFFB69CFF)
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(Modifier.size(116.dp).pointerInput(enabled, valueRange) {
-            if (enabled) detectDragGestures { change, drag ->
-                change.consume()
-                val delta = -drag.y / 150f * (valueRange.endInclusive - valueRange.start)
-                onValueChange((value + delta).coerceIn(valueRange))
-            }
-        }, contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(116.dp).pointerInput(enabled, valueRange) {
+                if (enabled) detectTapGestures { position ->
+                    val dx = position.x - size.width / 2f
+                    val dy = position.y - size.height / 2f
+                    var angle = Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()).toFloat()
+                    if (angle < 0f) angle += 360f
+                    if (angle < 135f) angle += 360f
+                    val fraction = ((angle - 135f) / 270f).coerceIn(0f, 1f)
+                    onValueChange(valueRange.start + fraction * (valueRange.endInclusive - valueRange.start))
+                }
+            }.pointerInput(enabled, valueRange) {
+                if (enabled) detectDragGestures(
+                    onDragStart = { position ->
+                        val dx = position.x - size.width / 2f
+                        val dy = position.y - size.height / 2f
+                        var angle = Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()).toFloat()
+                        if (angle < 0f) angle += 360f
+                        if (angle < 135f) angle += 360f
+                        val fraction = ((angle - 135f) / 270f).coerceIn(0f, 1f)
+                        onValueChange(valueRange.start + fraction * (valueRange.endInclusive - valueRange.start))
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        val dx = change.position.x - size.width / 2f
+                        val dy = change.position.y - size.height / 2f
+                        var angle = Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()).toFloat()
+                        if (angle < 0f) angle += 360f
+                        if (angle < 135f) angle += 360f
+                        val fraction = ((angle - 135f) / 270f).coerceIn(0f, 1f)
+                        onValueChange(valueRange.start + fraction * (valueRange.endInclusive - valueRange.start))
+                    }
+                )
+            },
+            contentAlignment = Alignment.Center
+        ) {
             androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
                 val stroke = 8.dp.toPx()
                 val diameter = size.minDimension - stroke
@@ -200,7 +231,6 @@ private fun RotaryKnob(
                 Text(label, color = Color(0xFFC9B8FF), fontSize = 9.sp)
             }
         }
-        Text(if (enabled) "POTENSIO" else "NONAKTIF", color = if (enabled) Color.LightGray else Color.Gray, fontSize = 9.sp)
     }
 }
 
@@ -246,6 +276,7 @@ fun MusicAiScreen() {
     var playbackDuration by remember { mutableIntStateOf(0) }
     var autoDuration by remember { mutableStateOf(false) }
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
+    var bassBoost by remember { mutableStateOf<BassBoost?>(null) }
     var equalizerLevels by remember { mutableStateOf(List(12) { 0f }) }
     var equalizerEnabled by remember {
         mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("equalizer_enabled", false))
@@ -377,11 +408,12 @@ fun MusicAiScreen() {
         val range = eq.bandLevelRange
         for (hardwareBand in 0 until hardwareCount) {
             val values = equalizerLevels.indices.filter { mappedBands[it] == hardwareBand }
-                .map { equalizerLevels[it] }
+                .map { index ->
+                    equalizerLevels[index] + if (targetFrequencies[index] <= subwooferFrequency) subwooferGain * 0.5f else 0f
+                }
             val averageDb = if (values.isEmpty()) 0f else values.average().toFloat()
             // Keep boosts/cuts moderate to reduce clipping and perceived loudness pumping.
-            val subGain = if (hardwareFrequencies[hardwareBand] <= subwooferFrequency) subwooferGain else 0f
-            val safeDb = (averageDb + subGain).coerceIn(-6f, 6f)
+            val safeDb = averageDb.coerceIn(-6f, 6f)
             val level = (safeDb * 100f).toInt().coerceIn(range[0].toInt(), range[1].toInt())
             eq.setBandLevel(hardwareBand.toShort(), level.toShort())
         }
@@ -674,6 +706,8 @@ fun MusicAiScreen() {
             temp.writeBytes(bytes)
             equalizer?.release()
             equalizer = null
+            bassBoost?.release()
+            bassBoost = null
             player?.release()
             player = MediaPlayer().apply {
                 setDataSource(temp.absolutePath)
@@ -683,6 +717,10 @@ fun MusicAiScreen() {
                     equalizer = Equalizer(0, audioSessionId).apply {
                         enabled = equalizerEnabled
                         applyEqualizerSettings(this)
+                    }
+                    bassBoost = BassBoost(0, audioSessionId).apply {
+                        setStrength((subwooferGain / 6f * 500f).toInt().coerceIn(0, 500).toShort())
+                        enabled = equalizerEnabled && subwooferGain > 0f
                     }
                 }
                 isPlaying = true
@@ -716,6 +754,8 @@ fun MusicAiScreen() {
         playbackDuration = (generatedTracks[index].durationSeconds?.times(1000))?.toInt() ?: 0
         equalizer?.release()
         equalizer = null
+        bassBoost?.release()
+        bassBoost = null
         player?.release()
         player = null
         isPlaying = false
@@ -1213,15 +1253,24 @@ fun MusicAiScreen() {
                                 }
                             }
                         }
-                        Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("MusicAI Player", fontWeight = FontWeight.SemiBold)
-                                    Text("Kontrol pemutaran lagu", color = Color.LightGray, fontSize = 11.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(color = Color(0x553E4C70), shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text("FORMAT", color = Color(0xFFBFB5D2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (audioMimeType.contains("wav")) "WAV" else "MP3 / AUDIO", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
-                                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = accent)
+                            }
+                            Surface(color = Color(0x553E4C70), shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text("EQUALIZER", color = Color(0xFFBFB5D2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (equalizerEnabled) "AKTIF" else "NONAKTIF", color = if (equalizerEnabled) Color(0xFF81D9A7) else Color.LightGray, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Surface(color = Color(0x553E4C70), shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text("UKURAN", color = Color(0xFFBFB5D2), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(audioBytes?.let { bytes -> if (bytes.size >= 1024 * 1024) String.format("%.1f MB", bytes.size / 1048576f) else "${bytes.size / 1024} KB" } ?: "—", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                         Text(status, color = Color.LightGray, fontSize = 12.sp)
@@ -1245,6 +1294,7 @@ fun MusicAiScreen() {
                                         equalizerEnabled = enabled
                                         context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("equalizer_enabled", enabled).apply()
                                         runCatching { equalizer?.enabled = enabled }
+                                        runCatching { bassBoost?.enabled = enabled && subwooferGain > 0f }
                                     })
                                 }
                                 Divider(color = Color(0x66D8C7FF))
@@ -1253,7 +1303,13 @@ fun MusicAiScreen() {
                                     RotaryKnob(value = subwooferGain, valueRange = 0f..6f, label = "LEVEL", display = "+${subwooferGain.toInt()} dB", enabled = equalizerEnabled, onValueChange = {
                                         subwooferGain = it
                                         context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_gain", it).apply()
-                                        if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                        if (equalizerEnabled) runCatching {
+                                            equalizer?.let { eq -> applyEqualizerSettings(eq) }
+                                            bassBoost?.apply {
+                                                setStrength((subwooferGain / 6f * 500f).toInt().coerceIn(0, 500).toShort())
+                                                enabled = subwooferGain > 0f
+                                            }
+                                        }
                                     })
                                     RotaryKnob(value = subwooferFrequency, valueRange = 40f..160f, label = "FREQ", display = "${subwooferFrequency.toInt()} Hz", enabled = equalizerEnabled, onValueChange = {
                                         subwooferFrequency = it
