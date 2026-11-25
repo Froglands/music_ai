@@ -343,35 +343,43 @@ fun MusicAiScreen() {
             try {
                 val effect = Visualizer(spectrumAudioSessionId)
                 effect.captureSize = Visualizer.getCaptureSizeRange()[1]
-                effect.scalingMode = Visualizer.SCALING_MODE_NORMALIZED
+                // Keep the real playback amplitude; NORMALIZED can flatten band-to-band dynamics.
+                effect.scalingMode = Visualizer.SCALING_MODE_AS_PLAYED
                 effect.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                     override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
 
                     override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                         if (fft == null || fft.size < 16) return
+                        // Android packs FFT as DC, Nyquist, then real/imaginary pairs.
                         val binCount = fft.size / 2
                         val levels = List(28) { index ->
-                            val low = kotlin.math.exp(index * kotlin.math.ln((binCount - 1).toDouble()) / 28.0).toInt().coerceAtLeast(1)
+                            val low = kotlin.math.exp(index * kotlin.math.ln((binCount - 1).toDouble()) / 28.0)
+                                .toInt().coerceIn(1, binCount - 2)
                             val high = kotlin.math.exp((index + 1) * kotlin.math.ln((binCount - 1).toDouble()) / 28.0)
-                                .toInt().coerceIn(low + 1, binCount)
-                            var peak = 0.0
+                                .toInt().coerceIn(low + 1, binCount - 1)
+                            var energy = 0.0
+                            var samples = 0
                             for (bin in low until high) {
                                 val real = fft[bin * 2].toInt().toDouble()
                                 val imaginary = fft[bin * 2 + 1].toInt().toDouble()
-                                peak = maxOf(peak, kotlin.math.sqrt(real * real + imaginary * imaginary))
+                                energy += real * real + imaginary * imaginary
+                                samples++
                             }
-                            val db = 20.0 * kotlin.math.log10(peak / 128.0 + 0.00001)
-                            Math.pow(((db + 58.0) / 58.0).coerceIn(0.0, 1.0), 0.72).toFloat().coerceIn(0.035f, 1f)
+                            val rms = if (samples > 0) kotlin.math.sqrt(energy / samples) else 0.0
+                            val db = 20.0 * kotlin.math.log10(rms / 128.0 + 0.000001)
+                            // A wider dynamic range keeps quiet bands visible while preserving musical movement.
+                            Math.pow(((db + 72.0) / 72.0).coerceIn(0.0, 1.0), 0.62)
+                                .toFloat().coerceIn(0.025f, 1f)
                         }
                         activity.runOnUiThread {
                             spectrumLevels = levels
                             if (!spectrumFrameReceived) {
                                 spectrumFrameReceived = true
-                                spectrumStatus = "Spectrum LIVE • sinyal audio terbaca."
+                                spectrumStatus = "Spectrum LIVE • dinamika audio terbaca."
                             }
                         }
                     }
-                }, Visualizer.getMaxCaptureRate(), false, true)
+                }, (Visualizer.getMaxCaptureRate() / 2).coerceAtLeast(8000), false, true)
                 effect.enabled = true
                 visualizer = effect
                 spectrumStatus = "Visualizer tersambung. Membaca sinyal audio..."
