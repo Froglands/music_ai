@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
 import android.media.audiofx.BassBoost
+import android.media.audiofx.Visualizer
 import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.provider.MediaStore
@@ -277,6 +278,10 @@ fun MusicAiScreen() {
     var autoDuration by remember { mutableStateOf(false) }
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
     var bassBoost by remember { mutableStateOf<BassBoost?>(null) }
+    var subwooferEnabled by remember { mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("subwoofer_enabled", true)) }
+    var spectrumLevels by remember { mutableStateOf(List(28) { 0.04f }) }
+    var hasAudioPermission by remember { mutableStateOf(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasAudioPermission = granted }
     var equalizerLevels by remember { mutableStateOf(List(12) { 0f }) }
     var equalizerEnabled by remember {
         mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("equalizer_enabled", false))
@@ -316,6 +321,42 @@ fun MusicAiScreen() {
     LaunchedEffect(title, lyrics) {
         context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE)
             .edit().putString("title", title).putString("lyrics", lyrics).apply()
+    }
+
+    DisposableEffect(player?.audioSessionId, isPlaying, hasAudioPermission) {
+        var visualizer: Visualizer? = null
+        if (isPlaying && hasAudioPermission) runCatching {
+            visualizer = Visualizer(player?.audioSessionId ?: 0).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[1]
+                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
+                    override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                        if (fft == null || fft.size < 8) return
+                        spectrumLevels = List(28) { index ->
+                            val half = fft.size / 2
+                            val start = (2.0 * Math.pow(1.22, index.toDouble())).toInt().coerceIn(1, half - 1)
+                            val end = (2.0 * Math.pow(1.22, (index + 1).toDouble())).toInt().coerceIn(start + 1, half)
+                            var total = 0f
+                            var count = 0
+                            for (bin in start until end) {
+                                val real = fft[bin * 2].toInt().toFloat()
+                                val imaginary = fft[bin * 2 + 1].toInt().toFloat()
+                                total += kotlin.math.sqrt(real * real + imaginary * imaginary)
+                                count++
+                            }
+                            val magnitude = if (count == 0) 0f else total / count / 128f
+                            ((20f * kotlin.math.log10(magnitude + 0.0001f) + 55f) / 55f).coerceIn(0.04f, 1f)
+                        }
+                    }
+                }, Visualizer.getMaxCaptureRate(), false, true)
+                enabled = true
+            }
+        }
+        onDispose {
+            runCatching { visualizer?.enabled = false }
+            runCatching { visualizer?.release() }
+            spectrumLevels = List(28) { 0.04f }
+        }
     }
 
     val coverAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -400,21 +441,18 @@ fun MusicAiScreen() {
         val hardwareFrequencies = (0 until hardwareCount).map { band ->
             (eq.getCenterFreq(band.toShort()) / 1000f).coerceAtLeast(1f)
         }
-        val mappedBands = targetFrequencies.map { target ->
-            hardwareFrequencies.indices.minByOrNull { band ->
-                kotlin.math.abs(kotlin.math.ln(target / hardwareFrequencies[band]))
-            } ?: 0
-        }
         val range = eq.bandLevelRange
         for (hardwareBand in 0 until hardwareCount) {
-            val values = equalizerLevels.indices.filter { mappedBands[it] == hardwareBand }
-                .map { index ->
-                    equalizerLevels[index] + if (targetFrequencies[index] <= subwooferFrequency) subwooferGain * 0.5f else 0f
-                }
-            val averageDb = if (values.isEmpty()) 0f else values.average().toFloat()
-            // Keep boosts/cuts moderate to reduce clipping and perceived loudness pumping.
-            val safeDb = averageDb.coerceIn(-6f, 6f)
-            val level = (safeDb * 100f).toInt().coerceIn(range[0].toInt(), range[1].toInt())
+            val frequency = hardwareFrequencies[hardwareBand]
+            val upper = targetFrequencies.indexOfFirst { it >= frequency }.let { if (it < 0) targetFrequencies.lastIndex else it }
+            val lower = (upper - 1).coerceAtLeast(0)
+            val lowHz = targetFrequencies[lower]
+            val highHz = targetFrequencies[upper]
+            val fraction = if (upper == lower || highHz == lowHz) 0f else
+                (kotlin.math.ln(frequency / lowHz) / kotlin.math.ln(highHz / lowHz)).coerceIn(0f, 1f)
+            val baseDb = equalizerLevels[lower] + (equalizerLevels[upper] - equalizerLevels[lower]) * fraction
+            val bassDb = if (subwooferEnabled && frequency <= subwooferFrequency) subwooferGain else 0f
+            val level = ((baseDb + bassDb) * 100f).toInt().coerceIn(range[0].toInt(), range[1].toInt())
             eq.setBandLevel(hardwareBand.toShort(), level.toShort())
         }
     }
@@ -720,7 +758,7 @@ fun MusicAiScreen() {
                     }
                     bassBoost = BassBoost(0, audioSessionId).apply {
                         setStrength((subwooferGain / 6f * 500f).toInt().coerceIn(0, 500).toShort())
-                        enabled = equalizerEnabled && subwooferGain > 0f
+                        enabled = equalizerEnabled && subwooferEnabled && subwooferGain > 0f
                     }
                 }
                 isPlaying = true
@@ -1253,6 +1291,32 @@ fun MusicAiScreen() {
                                 }
                             }
                         }
+                        Surface(color = Color(0x66313D5B), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("LIVE AUDIO SPECTRUM", color = Color(0xFFD6C7FF), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text(if (isPlaying && hasAudioPermission) "LIVE" else if (!hasAudioPermission) "IZIN DIPERLUKAN" else "STANDBY", color = if (isPlaying && hasAudioPermission) Color(0xFF81D9A7) else Color.LightGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                if (!hasAudioPermission) {
+                                    TextButton(onClick = { audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO) }) { Text("Aktifkan spectrum analyzer") }
+                                } else {
+                                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(66.dp)) {
+                                        val gap = 4.dp.toPx()
+                                        val count = spectrumLevels.size
+                                        val barWidth = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1f)
+                                        spectrumLevels.forEachIndexed { index, level ->
+                                            val barHeight = (size.height * level.coerceIn(0.04f, 1f)).coerceAtLeast(3.dp.toPx())
+                                            drawRoundRect(
+                                                brush = Brush.verticalGradient(listOf(Color(0xFF77E6D1), Color(0xFF9A7BFF), Color(0xFF463A80))),
+                                                topLeft = Offset(index * (barWidth + gap), size.height - barHeight),
+                                                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Surface(color = Color(0x553E4C70), shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
                                 Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
@@ -1294,24 +1358,48 @@ fun MusicAiScreen() {
                                         equalizerEnabled = enabled
                                         context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("equalizer_enabled", enabled).apply()
                                         runCatching { equalizer?.enabled = enabled }
-                                        runCatching { bassBoost?.enabled = enabled && subwooferGain > 0f }
+                                        runCatching { bassBoost?.enabled = enabled && subwooferEnabled && subwooferGain > 0f }
                                     })
                                 }
                                 Divider(color = Color(0x66D8C7FF))
-                                Text("SUBWOOFER", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf("Flat", "Bass", "Vocal", "Rock").forEach { preset ->
+                                        FilterChip(selected = false, onClick = {
+                                            equalizerLevels = when (preset) {
+                                                "Bass" -> listOf(8f, 7f, 5f, 2f, 0f, -1f, -2f, -1f, 1f, 2f, 2f, 2f)
+                                                "Vocal" -> listOf(-3f, -2f, 0f, 3f, 5f, 5f, 3f, 1f, 0f, 0f, -1f, -2f)
+                                                "Rock" -> listOf(5f, 3f, -1f, -3f, -1f, 2f, 4f, 5f, 3f, 2f, 3f, 4f)
+                                                else -> List(12) { 0f }
+                                            }
+                                            if (equalizerEnabled) runCatching { equalizer?.let { applyEqualizerSettings(it) } }
+                                        }, label = { Text(preset, fontSize = 10.sp) }, enabled = equalizerEnabled)
+                                    }
+                                }
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("SUBWOOFER", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    Text(if (subwooferEnabled) "ON" else "OFF", color = if (subwooferEnabled) Color(0xFF81D9A7) else Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Switch(checked = subwooferEnabled, onCheckedChange = { enabled ->
+                                        subwooferEnabled = enabled
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("subwoofer_enabled", enabled).apply()
+                                        runCatching {
+                                            equalizer?.let { applyEqualizerSettings(it) }
+                                            bassBoost?.enabled = equalizerEnabled && enabled && subwooferGain > 0f
+                                        }
+                                    }, enabled = equalizerEnabled)
+                                }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                                    RotaryKnob(value = subwooferGain, valueRange = 0f..6f, label = "LEVEL", display = "+${subwooferGain.toInt()} dB", enabled = equalizerEnabled, onValueChange = {
+                                    RotaryKnob(value = subwooferGain, valueRange = 0f..6f, label = "LEVEL", display = "+${subwooferGain.toInt()} dB", enabled = equalizerEnabled && subwooferEnabled, onValueChange = {
                                         subwooferGain = it
                                         context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_gain", it).apply()
                                         if (equalizerEnabled) runCatching {
                                             equalizer?.let { eq -> applyEqualizerSettings(eq) }
                                             bassBoost?.apply {
                                                 setStrength((subwooferGain / 6f * 500f).toInt().coerceIn(0, 500).toShort())
-                                                enabled = subwooferGain > 0f
+                                                enabled = subwooferEnabled && subwooferGain > 0f
                                             }
                                         }
                                     })
-                                    RotaryKnob(value = subwooferFrequency, valueRange = 40f..160f, label = "FREQ", display = "${subwooferFrequency.toInt()} Hz", enabled = equalizerEnabled, onValueChange = {
+                                    RotaryKnob(value = subwooferFrequency, valueRange = 40f..160f, label = "FREQ", display = "${subwooferFrequency.toInt()} Hz", enabled = equalizerEnabled && subwooferEnabled, onValueChange = {
                                         subwooferFrequency = it
                                         context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putFloat("subwoofer_frequency", it).apply()
                                         if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
@@ -1320,7 +1408,7 @@ fun MusicAiScreen() {
                                 Text("Level menambah bass pada band rendah. Frekuensi menentukan batas band yang ikut diperkuat; hasil akhirnya mengikuti kemampuan equalizer hardware HP.", color = Color.LightGray, fontSize = 11.sp)
                                 Divider(color = Color(0x66D8C7FF))
                                 Text("12-BAND • GESER HORIZONTAL", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                Text("Geser slider ke kiri/kanan. Rentang gain -6 sampai +6 dB.", color = Color.LightGray, fontSize = 11.sp)
+                                Text("12 kontrol horizontal • rentang ±12 dB. Nilai dipetakan ke band hardware secara interpolasi.", color = Color.LightGray, fontSize = 11.sp)
                                 val labels = listOf("31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz")
                                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                     labels.forEachIndexed { index, label ->
@@ -1332,7 +1420,7 @@ fun MusicAiScreen() {
                                                     equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
                                                     if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
                                                 },
-                                                valueRange = -6f..6f,
+                                                valueRange = -12f..12f,
                                                 enabled = equalizerEnabled,
                                                 modifier = Modifier.weight(1f).height(42.dp)
                                             )
