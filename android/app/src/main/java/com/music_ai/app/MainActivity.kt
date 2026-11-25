@@ -76,6 +76,7 @@ private fun loadMusicHistory(context: android.content.Context): List<MusicTrack>
                     item.optString("artist").takeIf { it.isNotBlank() }, item.optBoolean("isAiGenerated", false)))
             }
         }
+        }
     }
 }
 
@@ -749,6 +750,7 @@ fun MusicAiScreen() {
                 containerColor = Color(0xEE171D32)
             )
         }
+        androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides Color.White) {
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
@@ -762,7 +764,7 @@ fun MusicAiScreen() {
                     NavigationBarItem(
                         selected = page == AppPage.LIBRARY,
                         onClick = { page = AppPage.LIBRARY },
-                        icon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                        icon = { Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.White) },
                         label = { Text("Pustaka", color = Color.White) }, alwaysShowLabel = true
                     )
                     NavigationBarItem(
