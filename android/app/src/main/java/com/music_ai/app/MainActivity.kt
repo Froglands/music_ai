@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -350,33 +351,30 @@ fun MusicAiScreen() {
                         if (fft == null || fft.size < 16) return
                         val binCount = fft.size / 2
                         val levels = List(28) { index ->
-                            val low = (1.0 * Math.pow(binCount - 1.0, index / 28.0)).toInt().coerceAtLeast(1)
-                            val high = (1.0 * Math.pow(binCount - 1.0, (index + 1) / 28.0)).toInt()
-                                .coerceIn(low + 1, binCount)
-                            var sum = 0.0
-                            var count = 0
+                            val low = kotlin.math.exp(index * kotlin.math.ln((binCount - 1).toDouble()) / 28.0).toInt().coerceAtLeast(1)
+                            val high = kotlin.math.exp((index + 1) * kotlin.math.ln((binCount - 1).toDouble()) / 28.0)
+                                .toInt().coerceIn(low + 1, binCount)
+                            var peak = 0.0
                             for (bin in low until high) {
                                 val real = fft[bin * 2].toInt().toDouble()
                                 val imaginary = fft[bin * 2 + 1].toInt().toDouble()
-                                sum += kotlin.math.sqrt(real * real + imaginary * imaginary)
-                                count++
+                                peak = maxOf(peak, kotlin.math.sqrt(real * real + imaginary * imaginary))
                             }
-                            val magnitude = if (count == 0) 0.0 else sum / count
-                            val db = 20.0 * kotlin.math.log10(magnitude / 128.0 + 0.00001)
-                            ((db + 65.0) / 65.0).toFloat().coerceIn(0.035f, 1f)
+                            val db = 20.0 * kotlin.math.log10(peak / 128.0 + 0.00001)
+                            (((db + 58.0) / 58.0).coerceIn(0.0, 1.0).pow(0.72)).toFloat().coerceIn(0.035f, 1f)
                         }
                         activity.runOnUiThread {
                             spectrumLevels = levels
                             if (!spectrumFrameReceived) {
                                 spectrumFrameReceived = true
-                                spectrumStatus = "Spectrum LIVE • menerima sinyal audio."
+                                spectrumStatus = "Spectrum LIVE • sinyal audio terbaca."
                             }
                         }
                     }
-                }, 10_000, false, true)
+                }, Visualizer.getMaxCaptureRate(), false, true)
                 effect.enabled = true
                 visualizer = effect
-                spectrumStatus = "Visualizer tersambung. Menunggu data audio..."
+                spectrumStatus = "Visualizer tersambung. Membaca sinyal audio..."
             } catch (error: Exception) {
                 spectrumStatus = "Visualizer gagal: ${error.javaClass.simpleName} • ${error.message ?: "akses audio ditolak"}"
                 spectrumEnabled = false
@@ -1464,40 +1462,44 @@ fun MusicAiScreen() {
                                 Text("Level menambah bass pada band rendah. Frekuensi menentukan batas band yang ikut diperkuat; hasil akhirnya mengikuti kemampuan equalizer hardware HP.", color = Color.LightGray, fontSize = 11.sp)
                                 Divider(color = Color(0x66D8C7FF))
                                 Text("12-BAND • GESER HORIZONTAL", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                Text("12 kontrol horizontal • rentang ±12 dB. Nilai dipetakan ke band hardware secara interpolasi.", color = Color.LightGray, fontSize = 11.sp)
+                                Text("12 band • batang vertikal • rentang ±12 dB. Geser deretan kartu ke samping.", color = Color.LightGray, fontSize = 11.sp)
                                 val labels = listOf("31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz")
                                 Row(
                                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     labels.forEachIndexed { index, label ->
                                         Surface(
                                             color = Color(0x553E4C70),
                                             shape = RoundedCornerShape(14.dp),
-                                            modifier = Modifier.width(190.dp)
+                                            modifier = Modifier.width(82.dp).height(218.dp)
                                         ) {
-                                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                                    Text(
-                                                        if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(),
-                                                        color = Color(0xFFD9CCFF), fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                            Column(
+                                                Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(),
+                                                    color = Color(0xFFD9CCFF), fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                                )
+                                                Box(
+                                                    Modifier.width(48.dp).height(132.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Slider(
+                                                        value = equalizerLevels[index],
+                                                        onValueChange = { value ->
+                                                            equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
+                                                            if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                                        },
+                                                        valueRange = -12f..12f,
+                                                        enabled = equalizerEnabled,
+                                                        modifier = Modifier.width(128.dp).height(36.dp).rotate(-90f)
                                                     )
                                                 }
-                                                Slider(
-                                                    value = equalizerLevels[index],
-                                                    onValueChange = { value ->
-                                                        equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
-                                                        if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
-                                                    },
-                                                    valueRange = -12f..12f,
-                                                    enabled = equalizerEnabled,
-                                                    modifier = Modifier.fillMaxWidth().height(34.dp)
-                                                )
-                                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                    Text("-12 dB", color = Color.Gray, fontSize = 9.sp)
-                                                    Text("+12 dB", color = Color.Gray, fontSize = 9.sp)
-                                                }
+                                                Text("−12 / +12", color = Color.Gray, fontSize = 8.sp)
                                             }
                                         }
                                     }
