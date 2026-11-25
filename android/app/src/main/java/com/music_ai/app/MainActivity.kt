@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -38,6 +39,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.LocalContentColor
@@ -196,7 +198,10 @@ fun MusicAiScreen() {
     var autoDuration by remember { mutableStateOf(false) }
     var equalizer by remember { mutableStateOf<Equalizer?>(null) }
     var equalizerLevels by remember { mutableStateOf(List(12) { 0f }) }
-    var equalizerExpanded by remember { mutableStateOf(false) }
+    var equalizerEnabled by remember {
+        mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("equalizer_enabled", false))
+    }
+    var equalizerExpanded by remember { mutableStateOf(true) }
     var importedFileName by remember { mutableStateOf("") }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var backendReachable by remember { mutableStateOf<Boolean?>(null) }
@@ -303,6 +308,30 @@ fun MusicAiScreen() {
             } catch (e: Exception) {
                 status = "Gagal mengimpor audio: ${e.message}"
             }
+        }
+    }
+
+    fun applyEqualizerSettings(eq: Equalizer) {
+        val targetFrequencies = floatArrayOf(31f, 63f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 10000f, 12000f, 16000f)
+        val hardwareCount = eq.numberOfBands.toInt()
+        if (hardwareCount <= 0) return
+        val hardwareFrequencies = (0 until hardwareCount).map { band ->
+            (eq.getCenterFreq(band.toShort()) / 1000f).coerceAtLeast(1f)
+        }
+        val mappedBands = targetFrequencies.map { target ->
+            hardwareFrequencies.indices.minByOrNull { band ->
+                kotlin.math.abs(kotlin.math.ln(target / hardwareFrequencies[band]))
+            } ?: 0
+        }
+        val range = eq.bandLevelRange
+        for (hardwareBand in 0 until hardwareCount) {
+            val values = equalizerLevels.indices.filter { mappedBands[it] == hardwareBand }
+                .map { equalizerLevels[it] }
+            val averageDb = if (values.isEmpty()) 0f else values.average().toFloat()
+            // Keep boosts/cuts moderate to reduce clipping and perceived loudness pumping.
+            val safeDb = averageDb.coerceIn(-6f, 6f)
+            val level = (safeDb * 100f).toInt().coerceIn(range[0].toInt(), range[1].toInt())
+            eq.setBandLevel(hardwareBand.toShort(), level.toShort())
         }
     }
 
@@ -600,12 +629,8 @@ fun MusicAiScreen() {
                 start()
                 runCatching {
                     equalizer = Equalizer(0, audioSessionId).apply {
-                        enabled = true
-                        val range = bandLevelRange
-                        for (uiBand in 0 until 12) {
-                            val hardwareBand = (uiBand * (numberOfBands - 1) / 11f).toInt().toShort()
-                            setBandLevel(hardwareBand, (equalizerLevels[uiBand] * range[1] / 12f).toInt().toShort())
-                        }
+                        enabled = equalizerEnabled
+                        applyEqualizerSettings(this)
                     }
                 }
                 isPlaying = true
@@ -1135,36 +1160,56 @@ fun MusicAiScreen() {
                                 }
                             }
                         }
-                        Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(color = Color(0x66313D5B), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D8C7FF)), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Equalizer 12-band", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { equalizerExpanded = !equalizerExpanded }) { Text(if (equalizerExpanded) "Tutup" else "Atur EQ") }
+                                    Column(Modifier.weight(1f)) {
+                                        Text("EQUALIZER", fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("12-band • kontrol suara", color = Color.LightGray, fontSize = 11.sp)
+                                    }
+                                    Text(if (equalizerEnabled) "ON" else "OFF", color = if (equalizerEnabled) Color(0xFF81D9A7) else Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Switch(checked = equalizerEnabled, onCheckedChange = { enabled ->
+                                        equalizerEnabled = enabled
+                                        context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).edit().putBoolean("equalizer_enabled", enabled).apply()
+                                        runCatching { equalizer?.enabled = enabled }
+                                    })
                                 }
-                                Text("Pengaturan suara saat pemutaran. Jumlah band fisik mengikuti dukungan perangkat.", color = Color.LightGray, fontSize = 11.sp)
-                                if (equalizerExpanded) {
-                                    val labels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "10k", "12k", "16k")
+                                Text("Geser band ke atas/bawah. Pengaturan tetap tersimpan saat EQ dimatikan.", color = Color.LightGray, fontSize = 11.sp)
+                                val labels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "10k", "12k", "16k")
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
                                     labels.forEachIndexed { index, label ->
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(label, modifier = Modifier.width(42.dp), fontSize = 11.sp, color = Color.White)
-                                            Slider(value = equalizerLevels[index], onValueChange = { value ->
-                                                equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
-                                                runCatching {
-                                                    equalizer?.let { eq ->
-                                                        val band = (index * (eq.numberOfBands - 1) / 11f).toInt().toShort()
-                                                        val range = eq.bandLevelRange
-                                                        eq.setBandLevel(band, (value * range[1] / 12f).toInt().coerceIn(range[0].toInt(), range[1].toInt()).toShort())
-                                                    }
-                                                }
-                                            }, valueRange = -12f..12f, modifier = Modifier.weight(1f))
-                                            Text(if (equalizerLevels[index] > 0) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(), modifier = Modifier.width(32.dp), fontSize = 10.sp)
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(46.dp)) {
+                                            Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                            Box(Modifier.width(46.dp).height(116.dp), contentAlignment = Alignment.Center) {
+                                                Slider(
+                                                    value = equalizerLevels[index],
+                                                    onValueChange = { value ->
+                                                        equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
+                                                        if (equalizerEnabled) runCatching { equalizer?.let { applyEqualizerSettings(it) } }
+                                                    },
+                                                    valueRange = -6f..6f,
+                                                    enabled = equalizerEnabled,
+                                                    modifier = Modifier.width(116.dp).height(32.dp).graphicsLayer { rotationZ = 270f }
+                                                )
+                                            }
+                                            Text(
+                                                if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(),
+                                                color = Color(0xFFD9CCFF), fontSize = 10.sp
+                                            )
                                         }
                                     }
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                     TextButton(onClick = {
                                         equalizerLevels = List(12) { 0f }
-                                        runCatching { equalizer?.let { eq -> for (band in 0 until eq.numberOfBands) eq.setBandLevel(band.toShort(), 0) } }
+                                        runCatching { equalizer?.let { applyEqualizerSettings(it) } }
                                     }) { Text("Reset EQ") }
                                 }
+                                Text("Catatan: jumlah band independen yang benar-benar diproses mengikuti hardware audio HP.", color = Color.Gray, fontSize = 10.sp)
                             }
                         }
                         Surface(color = panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, glassBorder), modifier = Modifier.fillMaxWidth()) {
