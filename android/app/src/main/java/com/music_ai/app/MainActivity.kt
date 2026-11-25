@@ -37,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.foundation.border
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -162,9 +164,9 @@ fun MusicAiScreen() {
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val bg = Color(0xFF080B18)
-    val panel = Color(0x661D2946)
+    val panel = Color(0x552B3B5C)
     val accent = Color(0xFFB69CFF)
-    val glassBorder = Color(0x66D8D2FF)
+    val glassBorder = Color(0x99D8E7FF)
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
     var title by remember { mutableStateOf(context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE).getString("title", "") ?: "") }
@@ -698,7 +700,7 @@ fun MusicAiScreen() {
     MaterialTheme(colorScheme = darkColorScheme(
         background = bg, surface = Color(0xAA17213A), surfaceVariant = Color(0x77374461), primary = accent,
         secondary = Color(0xFF7DE3D1), onBackground = Color.White, onSurface = Color.White,
-        onSurfaceVariant = Color(0xFFE0E4F2), outline = Color(0x88D7DFFF)
+        onSurfaceVariant = Color(0xFFF0F2FF), outline = Color(0x99D7DFFF)
     )) {
         if (showGenreDialog) {
             AlertDialog(
@@ -714,7 +716,7 @@ fun MusicAiScreen() {
                             }
                         }
                         Divider(color = Color(0x55B69BFF))
-                        OutlinedTextField(value = customGenre, onValueChange = { customGenre = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Genre sendiri") }, placeholder = { Text("Contoh: ska reggae punk Sunda") }, singleLine = true)
+                        OutlinedTextField(value = customGenre, onValueChange = { customGenre = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Genre sendiri") }, placeholder = { Text("Contoh: ska reggae punk Sunda") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent))
                     }
                 },
                 confirmButton = { TextButton(onClick = { showGenreDialog = false }) { Text("Selesai") } },
@@ -754,34 +756,46 @@ fun MusicAiScreen() {
                     NavigationBarItem(
                         selected = page == AppPage.STUDIO,
                         onClick = { page = AppPage.STUDIO },
-                        icon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
-                        label = { Text("Studio") }
+                        icon = { Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.White) },
+                        label = { Text("Studio", color = Color.White) }, alwaysShowLabel = true
                     )
                     NavigationBarItem(
                         selected = page == AppPage.LIBRARY,
                         onClick = { page = AppPage.LIBRARY },
                         icon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
-                        label = { Text("Pustaka") }
+                        label = { Text("Pustaka", color = Color.White) }, alwaysShowLabel = true
                     )
                     NavigationBarItem(
                         selected = page == AppPage.SETTINGS,
                         onClick = { page = AppPage.SETTINGS },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        label = { Text("Pengaturan") }
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Color.White) },
+                        label = { Text("Pengaturan", color = Color.White) }, alwaysShowLabel = true
                     )
                 }
             }
         ) { innerPadding ->
-            Column(
-                Modifier.fillMaxSize()
-                    .background(Brush.linearGradient(
+            Box(Modifier.fillMaxSize()) {
+            // Ambient color blooms behind translucent surfaces create a deeper glass effect.
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(
                         colorStops = arrayOf(
                             0.0f to Color(0xFF090B1A),
                             0.32f to Color(0xFF211A3D),
                             0.68f to Color(0xFF102F3B),
                             1.0f to Color(0xFF090D1D)
                         )
-                    ))
+                    )))
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(top = 90.dp, end = 4.dp)
+                    .size(210.dp).blur(70.dp)
+                    .background(Color(0x887D55FF), RoundedCornerShape(120.dp))
+            )
+            Box(
+                Modifier.align(Alignment.CenterStart).padding(start = 0.dp, top = 240.dp)
+                    .size(170.dp).blur(65.dp)
+                    .background(Color(0x6670DCCB), RoundedCornerShape(100.dp))
+            )
+            Column(
+                Modifier.fillMaxSize()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 16.dp),
@@ -793,7 +807,7 @@ fun MusicAiScreen() {
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("MusicAI", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                        Text("MusicAI", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         Text("CREATE YOUR MUSIC  •  AI MUSIC STUDIO", color = Color(0xFFBBA6D9), fontSize = 10.sp, letterSpacing = 1.2.sp)
                     }
                 }
@@ -803,10 +817,10 @@ fun MusicAiScreen() {
                         Text("Studio kreatif", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Text("Wujudkan ide menjadi musik.", color = Color(0xFFB8B2C8), fontSize = 13.sp)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = !coverMode, onClick = { coverMode = false }, label = { Text("Lagu Baru") }, modifier = Modifier.weight(1f))
-                            FilterChip(selected = coverMode, onClick = { coverMode = true; if (selectedProvider != "musicapi") { selectedProvider = "musicapi"; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply() } }, label = { Text("Cover Lagu") }, modifier = Modifier.weight(1f))
+                            FilterChip(selected = !coverMode, onClick = { coverMode = false }, label = { Text("Lagu Baru", color = Color.White) }, leadingIcon = { Icon(Icons.Default.MusicNote, null, tint = Color.White) }, modifier = Modifier.weight(1f))
+                            FilterChip(selected = coverMode, onClick = { coverMode = true; if (selectedProvider != "musicapi") { selectedProvider = "musicapi"; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply() } }, label = { Text("Cover Lagu", color = Color.White) }, leadingIcon = { Icon(Icons.Default.Edit, null, tint = Color.White) }, modifier = Modifier.weight(1f))
                         }
-                        Text("AI GENERATOR", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
+                        Text("✦  AI GENERATOR", color = Color(0xFFE4D9FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
                         Box(Modifier.fillMaxWidth()) {
                             OutlinedButton(
                                 onClick = { providerMenuExpanded = true },
@@ -855,37 +869,37 @@ fun MusicAiScreen() {
                             }
                         }
                         if (coverMode) {
-                            Surface(color = Color(0x55374461), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D7E7FF)), modifier = Modifier.fillMaxWidth()) {
+                            Surface(color = Color(0x444C6385), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99D7E7FF)), modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("AUDIO SUMBER", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Text("♫  AUDIO SUMBER", color = Color(0xFFE4D9FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     Text(if (coverSourceName.isBlank()) "Belum ada lagu dipilih" else "$coverSourceName • ${"%.1f".format(coverSourceDuration)} detik • ${coverSourceBytes?.size?.div(1024) ?: 0} KB", color = Color.White, fontSize = 13.sp)
                                     OutlinedButton(onClick = { coverAudioLauncher.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text(if (coverSourceBytes == null) "Pilih lagu dari HP" else "Ganti lagu") }
                                     Text("MP3/WAV/M4A • 6 detik–8 menit • maksimal 4 MB", color = Color.LightGray, fontSize = 11.sp)
                                 }
                             }
-                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul cover") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul cover") }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent))
                         } else {
-                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent))
                         }
 
                         if (!coverMode) Surface(color = Color(0x66333B5C), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88D7C8FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("IDE & LIRIK", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                                Text("✎  IDE & LIRIK", color = Color(0xFFE4D9FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
                             OutlinedTextField(
                                 value = lyrics, onValueChange = { lyrics = it },
                                 label = { Text("Lirik atau ide lagu") },
                                 modifier = Modifier.fillMaxWidth().height(240.dp),
-                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x553B4968), unfocusedContainerColor = Color(0x333C4B68), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x887F8AAE)),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent, focusedPlaceholderColor = Color(0xFFB8C0D8), unfocusedPlaceholderColor = Color(0xFF9DA8C5), focusedContainerColor = Color(0x553B4968), unfocusedContainerColor = Color(0x333C4B68), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x887F8AAE)),
                                 placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\n") }
                             )
                             }
                         }
 
-                        Surface(color = Color(0x55344762), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99C8E7FF)), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0x44516A88), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x99C8E7FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("GENRE MUSIK", color = Color(0xFFD5C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp)
+                                        Text("♫  GENRE MUSIK", color = Color(0xFFE4D9FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp)
                                         Text(if (selectedGenres.isEmpty() && customGenre.isBlank()) "Pilih satu atau beberapa genre" else (selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString("  •  "), color = Color.White, fontSize = 13.sp, maxLines = 2)
                                     }
                                     TextButton(onClick = { showGenreDialog = true }) { Text("Ubah") }
@@ -943,13 +957,13 @@ fun MusicAiScreen() {
                             }
                         }
 
-                        Text(if (coverMode) "ARAHAN GAYA COVER" else "Suasana / mood • pilih beberapa", fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.Favorite, null, tint = Color(0xFFFFA6D7)); Text(if (coverMode) "ARAHAN GAYA COVER" else "SUASANA / MOOD", fontWeight = FontWeight.SemiBold, color = Color.White) }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             moodOptions.forEach { option ->
-                                FilterChip(selected = option in selectedMoods, onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option }, label = { Text(option) })
+                                FilterChip(selected = option in selectedMoods, onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option }, label = { Text(option, color = if (option in selectedMoods) Color.White else Color(0xFFE3E7F5)) }, leadingIcon = { Icon(Icons.Default.Favorite, null, tint = if (option in selectedMoods) Color(0xFFFFA6D7) else Color(0xFFB9C3DC), modifier = Modifier.size(14.dp)) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0x995E4A91), containerColor = Color(0x55323D5B), labelColor = Color(0xFFE3E7F5), iconColor = Color(0xFFB9C3DC), selectedLabelColor = Color.White, selectedLeadingIconColor = Color(0xFFFFA6D7)))
                             }
                         }
-                        OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Color(0xFFD9C8FF), unfocusedLabelColor = Color(0xFFC5CBE0), cursorColor = accent, focusedContainerColor = Color(0x55424C70), unfocusedContainerColor = Color(0x33424C70)))
 
                         if (coverMode) {
                             Text("Pengaruh lagu asli: ${(coverAudioWeight * 100).toInt()}%", color = accent, fontWeight = FontWeight.SemiBold)
@@ -992,7 +1006,7 @@ fun MusicAiScreen() {
                     }
 
                     AppPage.LIBRARY -> {
-                        Text("Pustaka musik", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { Icon(Icons.Default.MusicNote, null, tint = accent, modifier = Modifier.size(28.dp)); Text("Pustaka musik", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White) }
                         Text("Semua lagu buatan MusicAI dan audio lokal yang kamu impor.", color = Color.LightGray, fontSize = 13.sp)
                         OutlinedButton(onClick = { importAudioLauncher.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Download, null)
@@ -1108,7 +1122,7 @@ fun MusicAiScreen() {
                     }
 
                     AppPage.SETTINGS -> {
-                        Text("Pengaturan", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { Icon(Icons.Default.Settings, null, tint = accent, modifier = Modifier.size(26.dp)); Text("Pengaturan", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White) }
                         Surface(color = panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Koneksi server", fontWeight = FontWeight.Bold)
