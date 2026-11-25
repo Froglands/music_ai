@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, randomUUID } from "node:crypto";
 import { put, del } from "@vercel/blob";
 
 const app = express();
@@ -204,7 +204,7 @@ app.post("/api/cover", coverLimiter, express.raw({ type: ["audio/mpeg", "audio/m
   const audioWeight = Math.max(0, Math.min(1, Number(req.get("X-Cover-Weight") || 0.6)));
   let blobUrl = null;
   try {
-    const blob = await put(`temporary-covers/${crypto.randomUUID()}.${ext}`, req.body, {
+    const blob = await put(`temporary-covers/${randomUUID()}.${ext}`, req.body, {
       access: "public",
       addRandomSuffix: true,
       contentType: mime === "application/octet-stream" ? "audio/mpeg" : mime,
