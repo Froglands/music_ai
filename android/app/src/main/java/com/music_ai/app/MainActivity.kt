@@ -781,6 +781,10 @@ fun MusicAiScreen() {
                     AppPage.STUDIO -> {
                         Text("Studio kreatif", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Text("Wujudkan ide menjadi musik.", color = Color(0xFFB8B2C8), fontSize = 13.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = !coverMode, onClick = { coverMode = false }, label = { Text("Lagu Baru") }, modifier = Modifier.weight(1f))
+                            FilterChip(selected = coverMode, onClick = { coverMode = true; if (selectedProvider != "musicapi") { selectedProvider = "musicapi"; context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).edit().putString("provider", "musicapi").apply() } }, label = { Text("Cover Lagu") }, modifier = Modifier.weight(1f))
+                        }
                         Text("AI GENERATOR", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
                         Box(Modifier.fillMaxWidth()) {
                             OutlinedButton(
@@ -829,12 +833,21 @@ fun MusicAiScreen() {
                                 )
                             }
                         }
-                        OutlinedTextField(
-                            value = title, onValueChange = { title = it },
-                            label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                        )
+                        if (coverMode) {
+                            Surface(color = Color(0x442B2144), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("AUDIO SUMBER", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Text(if (coverSourceName.isBlank()) "Belum ada lagu dipilih" else "$coverSourceName • ${"%.1f".format(coverSourceDuration)} detik • ${coverSourceBytes?.size?.div(1024) ?: 0} KB", color = Color.White, fontSize = 13.sp)
+                                    OutlinedButton(onClick = { coverAudioLauncher.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text(if (coverSourceBytes == null) "Pilih lagu dari HP" else "Ganti lagu") }
+                                    Text("MP3/WAV/M4A • 6 detik–8 menit • maksimal 4 MB", color = Color.LightGray, fontSize = 11.sp)
+                                }
+                            }
+                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul cover") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        } else {
+                            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        }
 
-                        Surface(color = Color(0x442B2144), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
+                        if (!coverMode) Surface(color = Color(0x442B2144), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("IDE & LIRIK", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
                             OutlinedTextField(
@@ -865,8 +878,8 @@ fun MusicAiScreen() {
                             }
                         }
 
-                        Text("Vokal", fontWeight = FontWeight.SemiBold)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!coverMode) Text("Vokal", fontWeight = FontWeight.SemiBold)
+                        if (!coverMode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("male" to "Pria", "female" to "Wanita", "duet" to "Duet", "instrumental" to "Instrumen").forEach { (value, label) ->
                                 FilterChip(
                                     selected = vocal == value,
@@ -876,7 +889,7 @@ fun MusicAiScreen() {
                                 )
                             }
                         }
-                        Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        if (!coverMode) Surface(color = panel, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 if (selectedProvider == "stability") "Stability hanya mendukung musik instrumental. Pilihan vokal dikunci ke Instrumen selama provider ini aktif." else "Pilih Pria, Wanita, Duet Pria + Wanita, atau Instrumen. Mode duet mengarahkan AI membuat vokal bergantian dan harmoni bersama.",
                                 color = Color.LightGray,
@@ -885,16 +898,16 @@ fun MusicAiScreen() {
                             )
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!coverMode) Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Tempo", fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
                             Text("${bpm.toInt()} BPM", color = accent, fontWeight = FontWeight.Bold)
                         }
-                        Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
-                        Text("Durasi musik", fontWeight = FontWeight.SemiBold)
-                        Text(when { selectedProvider == "stability" -> "Stability Stable Audio 2.5: instrumental hingga 3 menit."; selectedProvider == "lyria" -> "Lyria 3.5: durasi hingga sekitar 3 menit."; else -> "Durasi maksimal Suno / MusicAPI: 6 menit." }, color = Color.LightGray, fontSize = 11.sp)
+                        if (!coverMode) Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 50f..200f)
+                        if (!coverMode) Text("Durasi musik", fontWeight = FontWeight.SemiBold)
+                        if (!coverMode) Text(when { selectedProvider == "stability" -> "Stability Stable Audio 2.5: instrumental hingga 3 menit."; selectedProvider == "lyria" -> "Lyria 3.5: durasi hingga sekitar 3 menit."; else -> "Durasi maksimal Suno / MusicAPI: 6 menit." }, color = Color.LightGray, fontSize = 11.sp)
                         var durationExpanded by remember { mutableStateOf(false) }
-                        Box {
+                        if (!coverMode) Box {
                             OutlinedButton(onClick = { durationExpanded = true }, modifier = Modifier.fillMaxWidth()) {
                                 Text("${durationSeconds / 60} menit ${durationSeconds % 60} detik", modifier = Modifier.weight(1f))
                                 Text("⌄")
@@ -909,7 +922,7 @@ fun MusicAiScreen() {
                             }
                         }
 
-                        Text("Suasana / mood • pilih beberapa", fontWeight = FontWeight.SemiBold)
+                        Text(if (coverMode) "ARAHAN GAYA COVER" else "Suasana / mood • pilih beberapa", fontWeight = FontWeight.SemiBold)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             moodOptions.forEach { option ->
                                 FilterChip(selected = option in selectedMoods, onClick = { selectedMoods = if (option in selectedMoods) selectedMoods - option else selectedMoods + option }, label = { Text(option) })
@@ -917,14 +930,19 @@ fun MusicAiScreen() {
                         }
                         OutlinedTextField(value = customMood, onValueChange = { customMood = it }, label = { Text("Arahan manual (opsional)") }, placeholder = { Text("Contoh: slap bass dominan, brass ceria, vokal serak...") }, modifier = Modifier.fillMaxWidth())
 
+                        if (coverMode) {
+                            Text("Pengaruh lagu asli: ${(coverAudioWeight * 100).toInt()}%", color = accent, fontWeight = FontWeight.SemiBold)
+                            Slider(value = coverAudioWeight, onValueChange = { coverAudioWeight = it }, valueRange = 0f..1f)
+                            Text("Rendah = lebih bebas diaransemen ulang • Tinggi = lebih dekat ke lagu asli", color = Color.LightGray, fontSize = 11.sp)
+                        }
                         Button(
-                            onClick = { if (selectedProvider == "lyria") showLyriaCostConfirm = true else generateSong() },
-                            enabled = !busy && lyrics.isNotBlank(),
+                            onClick = { if (coverMode) generateCover() else if (selectedProvider == "lyria") showLyriaCostConfirm = true else generateSong() },
+                            enabled = !busy && if (coverMode) coverSourceBytes != null else lyrics.isNotBlank(),
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                            else Text("CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
+                            else Text(if (coverMode) "BUAT COVER LAGU" else "CREATE YOUR MUSIC", fontWeight = FontWeight.Bold)
                         }
                         val aiTracks = generatedTracks.withIndex().filter { it.value.isAiGenerated }
                         if (aiTracks.isNotEmpty()) {
