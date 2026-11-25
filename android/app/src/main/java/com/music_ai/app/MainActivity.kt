@@ -132,7 +132,7 @@ private fun saveDeveloperApiKey(context: android.content.Context, value: String,
 
 private fun loadDeveloperApiKey(context: android.content.Context, provider: String = "musicapi"): String {
     return runCatching {
-        val prefKey = if (provider == "lyria") "lyria_api_key_encrypted" else "provider_api_key_encrypted"
+        val prefKey = when (provider) { "lyria" -> "lyria_api_key_encrypted"; "stability" -> "stability_api_key_encrypted"; else -> "provider_api_key_encrypted" }
         val encoded = context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
             .getString(prefKey, null) ?: return ""
         val bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
