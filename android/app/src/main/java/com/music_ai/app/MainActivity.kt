@@ -161,9 +161,9 @@ class MainActivity : ComponentActivity() {
 fun MusicAiScreen() {
     val context = LocalContext.current
     val activity = context as ComponentActivity
-    val bg = Color(0xFF090B16)
-    val panel = Color(0xCC211D35)
-    val accent = Color(0xFF9B7BFF)
+    val bg = Color(0xFF080B18)
+    val panel = Color(0x991A2038)
+    val accent = Color(0xFFB69CFF)
 
     var page by remember { mutableStateOf(AppPage.STUDIO) }
     var title by remember { mutableStateOf(context.getSharedPreferences("musicai_draft", android.content.Context.MODE_PRIVATE).getString("title", "") ?: "") }
@@ -695,13 +695,14 @@ fun MusicAiScreen() {
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
-        background = bg, surface = panel, primary = accent,
-        onBackground = Color.White, onSurface = Color.White
+        background = bg, surface = panel, surfaceVariant = Color(0xAA303653), primary = accent,
+        secondary = Color(0xFF7DE3D1), onBackground = Color.White, onSurface = Color.White,
+        onSurfaceVariant = Color(0xFFD0D5E8), outline = Color(0x66D7DFFF)
     )) {
         if (showGenreDialog) {
             AlertDialog(
                 onDismissRequest = { showGenreDialog = false },
-                containerColor = Color(0xFF211A32),
+                containerColor = Color(0xEE171D32),
                 title = { Text("Pilih genre", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(Modifier.fillMaxWidth().heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -730,7 +731,7 @@ fun MusicAiScreen() {
                 dismissButton = {
                     TextButton(onClick = { showLyriaCostConfirm = false }) { Text("Batal") }
                 },
-                containerColor = Color(0xFF211A32)
+                containerColor = Color(0xEE171D32)
             )
         }
         if (trackToDelete >= 0 && trackToDelete < generatedTracks.size) {
@@ -742,13 +743,13 @@ fun MusicAiScreen() {
                     TextButton(onClick = { val index = trackToDelete; trackToDelete = -1; deleteTrack(index); if (page == AppPage.PLAYER && generatedTracks.isEmpty()) page = AppPage.LIBRARY }) { Text("Hapus", color = Color(0xFFFF8A80)) }
                 },
                 dismissButton = { TextButton(onClick = { trackToDelete = -1 }) { Text("Batal") } },
-                containerColor = Color(0xFF211A32)
+                containerColor = Color(0xEE171D32)
             )
         }
         Scaffold(
-            containerColor = bg,
+            containerColor = Color.Transparent,
             bottomBar = {
-                NavigationBar(containerColor = panel) {
+                NavigationBar(containerColor = Color(0x99151B30), tonalElevation = 0.dp) {
                     NavigationBarItem(
                         selected = page == AppPage.STUDIO,
                         onClick = { page = AppPage.STUDIO },
@@ -772,7 +773,7 @@ fun MusicAiScreen() {
         ) { innerPadding ->
             Column(
                 Modifier.fillMaxSize()
-                    .background(Brush.linearGradient(listOf(Color(0xFF090B16), Color(0xFF17112B), Color(0xFF0B1725))))
+                    .background(Brush.linearGradient(listOf(Color(0xFF080B18), Color(0xFF17152D), Color(0xFF102B38), Color(0xFF090D1C))))
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 16.dp),
@@ -811,7 +812,7 @@ fun MusicAiScreen() {
                             DropdownMenu(
                                 expanded = providerMenuExpanded,
                                 onDismissRequest = { providerMenuExpanded = false },
-                                modifier = Modifier.fillMaxWidth(0.88f).background(Color(0xFF191821))
+                                modifier = Modifier.fillMaxWidth(0.88f).background(Color(0xEE1A2036))
                             ) {
                                 DropdownMenuItem(
                                     text = {
@@ -846,7 +847,7 @@ fun MusicAiScreen() {
                             }
                         }
                         if (coverMode) {
-                            Surface(color = Color(0x442B2144), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
+                            Surface(color = Color(0x66333B5C), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88D7C8FF)), modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Text("AUDIO SUMBER", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     Text(if (coverSourceName.isBlank()) "Belum ada lagu dipilih" else "$coverSourceName • ${"%.1f".format(coverSourceDuration)} detik • ${coverSourceBytes?.size?.div(1024) ?: 0} KB", color = Color.White, fontSize = 13.sp)
@@ -859,20 +860,20 @@ fun MusicAiScreen() {
                             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Judul lagu (opsional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         }
 
-                        if (!coverMode) Surface(color = Color(0x442B2144), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66D0B8FF)), modifier = Modifier.fillMaxWidth()) {
+                        if (!coverMode) Surface(color = Color(0x66333B5C), shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88D7C8FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("IDE & LIRIK", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
                             OutlinedTextField(
                                 value = lyrics, onValueChange = { lyrics = it },
                                 label = { Text("Lirik atau ide lagu") },
                                 modifier = Modifier.fillMaxWidth().height(240.dp),
-                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x33201B31), unfocusedContainerColor = Color(0x22201B31), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x665F5477)),
+                                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color(0x553B4263), unfocusedContainerColor = Color(0x33343B59), focusedBorderColor = Color(0xFFB69BFF), unfocusedBorderColor = Color(0x887F8AAE)),
                                 placeholder = { Text("Tulis lirik lengkap atau cukup satu ide...\n\nContoh: Buatkan lagu tema mistis tentang desa tua di pegunungan.\n\n") }
                             )
                             }
                         }
 
-                        Surface(color = Color(0x442D2544), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66C4ADFF)), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color(0x66323A5A), shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x88C8D9FF)), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
@@ -1152,8 +1153,8 @@ fun MusicAiScreen() {
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
-                                Divider(color = Color(0x665F5477))
-                                Divider(color = Color(0x665F5477))
+                                Divider(color = Color(0x887F8AAE))
+                                Divider(color = Color(0x887F8AAE))
                                 Text("PROVIDER GENERASI", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     FilterChip(
@@ -1205,7 +1206,7 @@ fun MusicAiScreen() {
                                         modifier = Modifier.weight(1f)
                                     ) { Text("Hapus / Reset") }
                                 }
-                                Divider(color = Color(0x665F5477))
+                                Divider(color = Color(0x887F8AAE))
                                 Text("STABILITY AI • STABLE AUDIO 2.5", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Text("API key Stability disimpan terenkripsi di perangkat dan dikirim langsung ke Stability melalui HTTPS. Mode ini menghasilkan instrumental tanpa vokal. Akun baru mendapat 25 kredit; satu generasi Stable Audio 2.5 menggunakan 20 kredit.", color = Color.LightGray, fontSize = 12.sp)
                                 OutlinedTextField(
@@ -1228,7 +1229,7 @@ fun MusicAiScreen() {
                                         developerMessage = "Stability API key dihapus dari perangkat."
                                     }, modifier = Modifier.weight(1f)) { Text("Hapus key") }
                                 }
-                                Divider(color = Color(0x665F5477))
+                                Divider(color = Color(0x887F8AAE))
                                 Text("GOOGLE LYRIA 3.5 • KHUSUS PENGEMBANG", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 Text("Masukkan Gemini API key dari Google AI Studio. Key disimpan terenkripsi di perangkat dan dikirim langsung ke Google hanya ketika provider Lyria dipilih.", color = Color.LightGray, fontSize = 12.sp)
                                 OutlinedTextField(
