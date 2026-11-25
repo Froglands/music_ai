@@ -200,6 +200,12 @@ fun MusicAiScreen() {
     var developerStabilityApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "stability")) }
     var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
     var providerMenuExpanded by remember { mutableStateOf(false) }
+    var coverMode by remember { mutableStateOf(false) }
+    var coverSourceBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var coverSourceName by remember { mutableStateOf("") }
+    var coverSourceMime by remember { mutableStateOf("audio/mpeg") }
+    var coverSourceDuration by remember { mutableFloatStateOf(0f) }
+    var coverAudioWeight by remember { mutableFloatStateOf(0.6f) }
     var showLyriaCostConfirm by remember { mutableStateOf(false) }
     var apiKeyVisible by remember { mutableStateOf(false) }
     var backendUrl by remember {
@@ -216,6 +222,26 @@ fun MusicAiScreen() {
             .edit().putString("title", title).putString("lyrics", lyrics).apply()
     }
 
+    val coverAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("File audio tidak bisa dibaca.")
+                if (bytes.isEmpty()) throw IllegalStateException("File audio kosong.")
+                if (bytes.size > 4 * 1024 * 1024) throw IllegalStateException("Ukuran file maksimal 4 MB untuk upload cover.")
+                val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
+                if (!mime.startsWith("audio/")) throw IllegalStateException("Pilih file audio.")
+                val retriever = MediaMetadataRetriever()
+                val duration = try { retriever.setDataSource(context, uri); (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toFloatOrNull() ?: 0f) / 1000f } finally { runCatching { retriever.release() } }
+                if (duration < 6f || duration > 480f) throw IllegalStateException("Durasi audio harus 6 detik sampai 8 menit.")
+                coverSourceBytes = bytes
+                coverSourceMime = when { mime.contains("wav") -> "audio/wav"; mime.contains("mp4") || mime.contains("m4a") -> "audio/mp4"; mime.contains("aac") -> "audio/aac"; mime.contains("flac") -> "audio/flac"; else -> "audio/mpeg" }
+                coverSourceName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Audio cover"
+                coverSourceDuration = duration
+                if (title.isBlank()) title = coverSourceName.substringBeforeLast('.', coverSourceName)
+                status = "Audio sumber siap untuk dibuat cover."
+            } catch (e: Exception) { status = "Gagal memilih audio: ${e.message}" }
+        }
+    }
     val importAudioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try {
