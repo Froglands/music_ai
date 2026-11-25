@@ -144,6 +144,13 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   const autoDuration = req.body?.durationMode === "auto";
   const duration = autoDuration ? null : Math.max(10, Math.min(360, Math.round(Number(req.body?.duration || 180))));
   const bpm = Number(req.body?.bpm || 110);
+  const supportedSunoModels = new Set([
+    "sonic-v6", "sonic-v6-wild", "sonic-v6-mini",
+    "sonic-v5-5", "sonic-v5", "sonic-v4-5-plus",
+    "sonic-v4-5", "sonic-v4", "sonic-v3-5"
+  ]);
+  const requestedSunoModel = cleanString(req.body?.sunoModel, 40) || "sonic-v6";
+  const sunoModel = supportedSunoModels.has(requestedSunoModel) ? requestedSunoModel : "sonic-v6";
 
   if (!instrumental && (!lyrics || lyrics.length < 10)) return res.status(400).json({ error: inputMode === "prompt" ? "Tulis ide lagu minimal 10 karakter." : "Masukkan lirik minimal 10 karakter (maksimal 5.000)." });
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
@@ -166,7 +173,7 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
       body: JSON.stringify({
         task_type: "create_music",
         custom_mode: true,
-        mv: "sonic-v6",
+        mv: sunoModel,
         ...(title ? { title } : {}),
         ...(instrumental
           ? { make_instrumental: true, custom_mode: false, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + lyrics + ". " + tags }
