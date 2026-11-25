@@ -281,6 +281,8 @@ fun MusicAiScreen() {
     var subwooferEnabled by remember { mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("subwoofer_enabled", true)) }
     var spectrumLevels by remember { mutableStateOf(List(28) { 0.04f }) }
     var spectrumEnabled by remember { mutableStateOf(false) }
+    var spectrumAudioSessionId by remember { mutableIntStateOf(0) }
+    var spectrumFrameReceived by remember { mutableStateOf(false) }
     var spectrumStatus by remember { mutableStateOf("Tekan Aktifkan untuk memulai spectrum analyzer.") }
     var hasAudioPermission by remember { mutableStateOf(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -333,49 +335,72 @@ fun MusicAiScreen() {
             .edit().putString("title", title).putString("lyrics", lyrics).apply()
     }
 
-    DisposableEffect(player?.audioSessionId, isPlaying, hasAudioPermission, spectrumEnabled) {
+    DisposableEffect(spectrumAudioSessionId, isPlaying, hasAudioPermission, spectrumEnabled) {
         var visualizer: Visualizer? = null
-        if (isPlaying && hasAudioPermission && spectrumEnabled) {
+        spectrumFrameReceived = false
+        if (isPlaying && hasAudioPermission && spectrumEnabled && spectrumAudioSessionId > 0) {
             try {
-                visualizer = Visualizer(player?.audioSessionId ?: 0).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[1]
-                    setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
-                        override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                            if (fft == null || fft.size < 8) return
-                            val half = fft.size / 2
-                            spectrumLevels = List(28) { index ->
-                                val startBin = (2.0 * Math.pow(1.22, index.toDouble())).toInt().coerceIn(1, half - 1)
-                                val endBin = (2.0 * Math.pow(1.22, (index + 1).toDouble())).toInt().coerceIn(startBin + 1, half)
-                                var energy = 0f
-                                var count = 0
-                                for (bin in startBin until endBin) {
-                                    val real = fft[bin * 2].toInt().toFloat()
-                                    val imaginary = fft[bin * 2 + 1].toInt().toFloat()
-                                    energy += kotlin.math.sqrt(real * real + imaginary * imaginary)
-                                    count++
-                                }
-                                val magnitude = if (count == 0) 0f else energy / count / 128f
-                                ((20f * kotlin.math.log10(magnitude + 0.0001f) + 48f) / 48f).coerceIn(0.04f, 1f)
+                val effect = Visualizer(spectrumAudioSessionId)
+                effect.captureSize = Visualizer.getCaptureSizeRange()[1]
+                effect.scalingMode = Visualizer.SCALING_MODE_NORMALIZED
+                effect.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
+
+                    override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                        if (fft == null || fft.size < 16) return
+                        val binCount = fft.size / 2
+                        val levels = List(28) { index ->
+                            val low = (1.0 * Math.pow(binCount - 1.0, index / 28.0)).toInt().coerceAtLeast(1)
+                            val high = (1.0 * Math.pow(binCount - 1.0, (index + 1) / 28.0)).toInt()
+                                .coerceIn(low + 1, binCount)
+                            var sum = 0.0
+                            var count = 0
+                            for (bin in low until high) {
+                                val real = fft[bin * 2].toInt().toDouble()
+                                val imaginary = fft[bin * 2 + 1].toInt().toDouble()
+                                sum += kotlin.math.sqrt(real * real + imaginary * imaginary)
+                                count++
+                            }
+                            val magnitude = if (count == 0) 0.0 else sum / count
+                            val db = 20.0 * kotlin.math.log10(magnitude / 128.0 + 0.00001)
+                            ((db + 65.0) / 65.0).toFloat().coerceIn(0.035f, 1f)
+                        }
+                        activity.runOnUiThread {
+                            spectrumLevels = levels
+                            if (!spectrumFrameReceived) {
+                                spectrumFrameReceived = true
+                                spectrumStatus = "Spectrum LIVE • menerima sinyal audio."
                             }
                         }
-                    }, Visualizer.getMaxCaptureRate(), false, true)
-                    enabled = true
-                }
-                spectrumStatus = "Spectrum analyzer aktif."
+                    }
+                }, 10_000, false, true)
+                effect.enabled = true
+                visualizer = effect
+                spectrumStatus = "Visualizer tersambung. Menunggu data audio..."
             } catch (error: Exception) {
-                spectrumStatus = "Visualizer gagal dijalankan: ${error.message ?: "akses audio ditolak"}"
+                spectrumStatus = "Visualizer gagal: ${error.javaClass.simpleName} • ${error.message ?: "akses audio ditolak"}"
                 spectrumEnabled = false
                 runCatching { visualizer?.release() }
                 visualizer = null
             }
+        } else if (spectrumEnabled && isPlaying && spectrumAudioSessionId <= 0) {
+            spectrumStatus = "Audio session belum tersedia. Hentikan lalu putar ulang lagu."
         } else if (spectrumEnabled && !isPlaying) {
-            spectrumStatus = "Siap. Putar lagu untuk menampilkan sinyal audio."
+            spectrumStatus = "Spectrum siap. Putar lagu untuk membaca audio."
         }
         onDispose {
             runCatching { visualizer?.enabled = false }
             runCatching { visualizer?.release() }
-            spectrumLevels = List(28) { 0.04f }
+            spectrumLevels = List(28) { 0.035f }
+        }
+    }
+
+    LaunchedEffect(spectrumEnabled, isPlaying, spectrumAudioSessionId, hasAudioPermission) {
+        if (spectrumEnabled && isPlaying && hasAudioPermission && spectrumAudioSessionId > 0) {
+            delay(1800)
+            if (!spectrumFrameReceived) {
+                spectrumStatus = "Visualizer aktif tetapi belum menerima FFT. Coba hentikan dan putar ulang lagu."
+            }
         }
     }
 
@@ -790,6 +815,7 @@ fun MusicAiScreen() {
                     else playbackPosition = playbackDuration
                 }
             }
+            spectrumAudioSessionId = player?.audioSessionId ?: 0
             status = "Memutar: $title"
         } catch (e: Exception) {
             isPlaying = false
