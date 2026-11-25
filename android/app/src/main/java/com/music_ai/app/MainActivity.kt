@@ -330,6 +330,8 @@ fun MusicAiScreen() {
     var developerLyriaApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "lyria")) }
     var developerStabilityApiKey by remember { mutableStateOf(loadDeveloperApiKey(context, "stability")) }
     var selectedProvider by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("provider", "musicapi") ?: "musicapi") }
+    var selectedSunoModel by remember { mutableStateOf(context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE).getString("suno_model", "sonic-v6") ?: "sonic-v6") }
+    var sunoModelMenuExpanded by remember { mutableStateOf(false) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var coverMode by remember { mutableStateOf(false) }
     var coverSourceBytes by remember { mutableStateOf<ByteArray?>(null) }
@@ -552,6 +554,7 @@ fun MusicAiScreen() {
             try {
                 val json = JSONObject().apply {
                     put("provider", when { useStability -> "stability"; useLyria -> "lyria"; else -> "musicapi" })
+                    put("sunoModel", selectedSunoModel)
                     put("title", title.trim())
                     put("lyrics", lyrics)
                     put("inputMode", "auto")
@@ -1124,6 +1127,57 @@ fun MusicAiScreen() {
                                     },
                                     trailingIcon = { if (selectedProvider == "stability") Text("✓", color = Color(0xFF70D7A0)) }
                                 )
+                            }
+                        }
+                        if (!coverMode && selectedProvider == "musicapi") {
+                            val sunoModels = listOf(
+                                Triple("sonic-v6", "Suno v6 • Standar", "Model utama generasi terbaru"),
+                                Triple("sonic-v6-wild", "Suno v6 Wild", "Eksperimental • hasil lebih berani"),
+                                Triple("sonic-v6-mini", "Suno v6 Mini", "Lebih ringan dan cepat"),
+                                Triple("sonic-v5-5", "Suno v5.5 (Legacy)", "ID lama • saat ini dipetakan ke v6"),
+                                Triple("sonic-v5", "Suno v5 (Legacy)", "ID lama • saat ini dipetakan ke v6"),
+                                Triple("sonic-v4-5-plus", "Suno v4.5+ (Legacy)", "ID lama • saat ini dipetakan ke v6"),
+                                Triple("sonic-v4-5", "Suno v4.5 (Legacy)", "ID lama • saat ini dipetakan ke v6"),
+                                Triple("sonic-v4", "Suno v4 (Legacy)", "ID lama • saat ini dipetakan ke v6"),
+                                Triple("sonic-v3-5", "Suno v3.5 (Legacy)", "ID lama • saat ini dipetakan ke v6")
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("MODEL SUNO", color = Color(0xFFD6C7FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Box {
+                                    OutlinedButton(
+                                        onClick = { sunoModelMenuExpanded = true },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
+                                        Text(sunoModels.firstOrNull { it.first == selectedSunoModel }?.second ?: "Suno v6 • Standar", modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
+                                        Text("⌄", fontSize = 18.sp)
+                                    }
+                                    DropdownMenu(
+                                        expanded = sunoModelMenuExpanded,
+                                        onDismissRequest = { sunoModelMenuExpanded = false },
+                                        modifier = Modifier.fillMaxWidth(0.9f).background(Color(0xF01A2640))
+                                    ) {
+                                        sunoModels.forEach { (modelId, modelName, modelDescription) ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Column {
+                                                        Text(modelName, fontWeight = FontWeight.SemiBold)
+                                                        Text(modelDescription, color = Color.LightGray, fontSize = 10.sp)
+                                                    }
+                                                },
+                                                onClick = {
+                                                    selectedSunoModel = modelId
+                                                    sunoModelMenuExpanded = false
+                                                    context.getSharedPreferences("musicai_settings", android.content.Context.MODE_PRIVATE)
+                                                        .edit().putString("suno_model", modelId).apply()
+                                                },
+                                                trailingIcon = { if (selectedSunoModel == modelId) Text("✓", color = Color(0xFF70D7A0)) }
+                                            )
+                                        }
+                                    }
+                                }
+                                Text("Catatan: pilihan v5 dan versi lebih lama tetap tersedia untuk kompatibilitas, tetapi MusicAPI menyatakan versi tersebut sekarang dijalankan menggunakan v6.", color = Color.LightGray, fontSize = 10.sp)
                             }
                         }
                         if (coverMode) {
