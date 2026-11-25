@@ -149,22 +149,34 @@ app.post("/api/generate", generationLimiter, async (req, res) => {
   if (!Number.isFinite(bpm) || bpm < 50 || bpm > 200) return res.status(400).json({ error: "Tempo harus antara 50 dan 200 BPM." });
 
   const vocalDirection = req.body?.vocal === "duet" ? "male and female duet vocals, alternating male and female verses, harmonized duet chorus" : req.body?.vocal === "male" ? "male lead vocal" : req.body?.vocal === "female" ? "female lead vocal" : instrumental ? "instrumental, no vocals" : "vocal song";
-  const tags = [genre, mood, `${bpm} BPM`, vocalDirection].join(", ");
+  // Prioritize a stable arrangement and clean studio mix without forcing heavy post-processing.
+  const tags = [genre, mood, `${bpm} BPM`, vocalDirection, "professional studio recording", "high-fidelity clean mix", "clear balanced mastering", "defined bass and drums", "clear vocal presence", "consistent instrumentation"].join(", ");
+  const negativeTags = "muddy audio, muffled vocals, harsh distortion, clipping, noisy mix, unbalanced instruments, abrupt ending, unfinished outro, random instrument changes, dissonant ending, tempo drift";
+  const hasOutro = /\\[(outro|end|fade\\s*out|short\\s*instrumental\\s*outro)\\]/i.test(lyrics);
+  const structuredLyrics = !instrumental && inputMode === "lyrics" && !hasOutro
+    ? `${lyrics}\\n\\n[Outro]\\n[Short Instrumental Outro]\\n[End]`
+    : lyrics;
+  const generationPrompt = inputMode === "prompt"
+    ? `${lyrics}\\n\\nArrangement direction: keep the same key, tempo, groove and instrument palette throughout. Build naturally toward a resolved final chorus, then play a short coherent instrumental outro with a clear final cadence. No abrupt cutoff or new instrument entering at the end. Use a clean, balanced studio mix with clear vocals and separated instruments.`
+    : structuredLyrics;
   try {
     const response = await fetch("https://api.musicapi.ai/api/v1/sonic/create", {
       method: "POST",
       headers: { Authorization: `Bearer ${activeApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         task_type: "create_music",
-        custom_mode: !instrumental,
-        mv: "sonic-v5-5",
+        custom_mode: true,
+        mv: "sonic-v6",
         ...(title ? { title } : {}),
         ...(instrumental
           ? { make_instrumental: true, custom_mode: false, gpt_description_prompt: "Instrumental music, no vocals, no lyrics. " + lyrics + ". " + tags }
           : inputMode === "prompt"
-            ? { auto_lyrics: true, prompt: lyrics, vocal_gender: vocal }
-            : { prompt: lyrics, ...(vocal ? { vocal_gender: vocal } : {}) }),
+            ? { auto_lyrics: true, prompt: generationPrompt, vocal_gender: vocal }
+            : { prompt: generationPrompt, ...(vocal ? { vocal_gender: vocal } : {}) }),
         tags,
+        negative_tags: negativeTags,
+        style_weight: 0.85,
+        weirdness_constraint: 0.25,
         ...(duration ? { duration } : {})
       }),
       signal: AbortSignal.timeout(30_000)
