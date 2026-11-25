@@ -584,6 +584,9 @@ fun MusicAiScreen() {
                         "instrumental" -> "Instrumental only, no vocals. "
                         else -> "Female lead singing voice. "
                     })
+                    append("Production quality: clean high-fidelity studio mix, clear lead vocal, controlled low end, balanced mids and highs, natural dynamics, distinct instrument separation, no clipping, no harsh distortion, no muddy or muffled sound. ")
+                    append("Arrangement continuity: keep the same key, tempo, groove and core instrument palette from beginning to end. Do not introduce unrelated instruments or sudden genre changes. ")
+                    append("Ending: build naturally into a final chorus, then resolve musically with a short instrumental outro and a clear final cadence or smooth fade. Do not cut off abruptly; make the last section feel intentional and connected to the song. ")
                     append("Use these original lyrics. Preserve the section labels and lyrics: ")
                     append(lyrics)
                 }
@@ -593,7 +596,9 @@ fun MusicAiScreen() {
                     append("Style and genre: ${(selectedGenres + listOf(customGenre.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { "Pop" }}. ")
                     append("Mood: ${(selectedMoods + listOf(customMood.trim()).filter { it.isNotBlank() }).joinToString(", ").ifBlank { mood }}. ")
                     append("Tempo: ${bpm.toInt()} BPM. ")
-                    append("Create a coherent, polished instrumental arrangement with a clear beginning, development and ending.")
+                    append("Production: clean high-fidelity studio mix, balanced frequency spectrum, defined bass, clear drums, natural dynamics, separated instruments, no clipping, harsh distortion, muddiness or muffled highs. ")
+                    append("Arrangement: maintain one coherent key, tempo, groove and instrument palette throughout; transitions must be smooth and musically motivated, with no random instrument changes. ")
+                    append("Ending: resolve the final musical phrase naturally, then play a short connected instrumental outro with a clear final cadence or smooth fade. Never stop mid-phrase or end abruptly.")
                 }
                 val request = if (useStability) {
                     val form = MultipartBody.Builder().setType(MultipartBody.FORM)
