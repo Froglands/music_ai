@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
@@ -75,7 +76,6 @@ private fun loadMusicHistory(context: android.content.Context): List<MusicTrack>
                     item.optString("coverFileName").takeIf { it.isNotBlank() },
                     item.optString("artist").takeIf { it.isNotBlank() }, item.optBoolean("isAiGenerated", false)))
             }
-        }
         }
     }
 }
@@ -1331,6 +1331,7 @@ fun MusicAiScreen() {
                 }
                 Text("MusicAI • Flow Music companion", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
+        }
         }
     }
 }
