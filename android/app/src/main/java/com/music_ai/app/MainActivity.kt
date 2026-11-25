@@ -280,8 +280,18 @@ fun MusicAiScreen() {
     var bassBoost by remember { mutableStateOf<BassBoost?>(null) }
     var subwooferEnabled by remember { mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("subwoofer_enabled", true)) }
     var spectrumLevels by remember { mutableStateOf(List(28) { 0.04f }) }
+    var spectrumEnabled by remember { mutableStateOf(false) }
+    var spectrumStatus by remember { mutableStateOf("Tekan Aktifkan untuk memulai spectrum analyzer.") }
     var hasAudioPermission by remember { mutableStateOf(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasAudioPermission = granted }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasAudioPermission = granted
+        if (granted) {
+            spectrumEnabled = true
+            spectrumStatus = if (isPlaying) "Spectrum analyzer aktif." else "Izin aktif. Putar lagu untuk melihat gerakan spectrum."
+        } else {
+            spectrumStatus = "Izin mikrofon ditolak. Izinkan Audio di Pengaturan aplikasi."
+        }
+    }
     var equalizerLevels by remember { mutableStateOf(List(12) { 0f }) }
     var equalizerEnabled by remember {
         mutableStateOf(context.getSharedPreferences("musicai_player", android.content.Context.MODE_PRIVATE).getBoolean("equalizer_enabled", false))
@@ -323,34 +333,44 @@ fun MusicAiScreen() {
             .edit().putString("title", title).putString("lyrics", lyrics).apply()
     }
 
-    DisposableEffect(player?.audioSessionId, isPlaying, hasAudioPermission) {
+    DisposableEffect(player?.audioSessionId, isPlaying, hasAudioPermission, spectrumEnabled) {
         var visualizer: Visualizer? = null
-        if (isPlaying && hasAudioPermission) runCatching {
-            visualizer = Visualizer(player?.audioSessionId ?: 0).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1]
-                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                    override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
-                    override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                        if (fft == null || fft.size < 8) return
-                        spectrumLevels = List(28) { index ->
+        if (isPlaying && hasAudioPermission && spectrumEnabled) {
+            try {
+                visualizer = Visualizer(player?.audioSessionId ?: 0).apply {
+                    captureSize = Visualizer.getCaptureSizeRange()[1]
+                    setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
+                        override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                            if (fft == null || fft.size < 8) return
                             val half = fft.size / 2
-                            val start = (2.0 * Math.pow(1.22, index.toDouble())).toInt().coerceIn(1, half - 1)
-                            val end = (2.0 * Math.pow(1.22, (index + 1).toDouble())).toInt().coerceIn(start + 1, half)
-                            var total = 0f
-                            var count = 0
-                            for (bin in start until end) {
-                                val real = fft[bin * 2].toInt().toFloat()
-                                val imaginary = fft[bin * 2 + 1].toInt().toFloat()
-                                total += kotlin.math.sqrt(real * real + imaginary * imaginary)
-                                count++
+                            spectrumLevels = List(28) { index ->
+                                val startBin = (2.0 * Math.pow(1.22, index.toDouble())).toInt().coerceIn(1, half - 1)
+                                val endBin = (2.0 * Math.pow(1.22, (index + 1).toDouble())).toInt().coerceIn(startBin + 1, half)
+                                var energy = 0f
+                                var count = 0
+                                for (bin in startBin until endBin) {
+                                    val real = fft[bin * 2].toInt().toFloat()
+                                    val imaginary = fft[bin * 2 + 1].toInt().toFloat()
+                                    energy += kotlin.math.sqrt(real * real + imaginary * imaginary)
+                                    count++
+                                }
+                                val magnitude = if (count == 0) 0f else energy / count / 128f
+                                ((20f * kotlin.math.log10(magnitude + 0.0001f) + 48f) / 48f).coerceIn(0.04f, 1f)
                             }
-                            val magnitude = if (count == 0) 0f else total / count / 128f
-                            ((20f * kotlin.math.log10(magnitude + 0.0001f) + 55f) / 55f).coerceIn(0.04f, 1f)
                         }
-                    }
-                }, Visualizer.getMaxCaptureRate(), false, true)
-                enabled = true
+                    }, Visualizer.getMaxCaptureRate(), false, true)
+                    enabled = true
+                }
+                spectrumStatus = "Spectrum analyzer aktif."
+            } catch (error: Exception) {
+                spectrumStatus = "Visualizer gagal dijalankan: ${error.message ?: "akses audio ditolak"}"
+                spectrumEnabled = false
+                runCatching { visualizer?.release() }
+                visualizer = null
             }
+        } else if (spectrumEnabled && !isPlaying) {
+            spectrumStatus = "Siap. Putar lagu untuk menampilkan sinyal audio."
         }
         onDispose {
             runCatching { visualizer?.enabled = false }
@@ -1295,24 +1315,34 @@ fun MusicAiScreen() {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("LIVE AUDIO SPECTRUM", color = Color(0xFFD6C7FF), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                    Text(if (isPlaying && hasAudioPermission) "LIVE" else if (!hasAudioPermission) "IZIN DIPERLUKAN" else "STANDBY", color = if (isPlaying && hasAudioPermission) Color(0xFF81D9A7) else Color.LightGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (isPlaying && spectrumEnabled && hasAudioPermission) "LIVE" else "STANDBY", color = if (isPlaying && spectrumEnabled && hasAudioPermission) Color(0xFF81D9A7) else Color.LightGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
-                                if (!hasAudioPermission) {
-                                    TextButton(onClick = { audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO) }) { Text("Aktifkan spectrum analyzer") }
-                                } else {
-                                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(66.dp)) {
-                                        val gap = 4.dp.toPx()
-                                        val count = spectrumLevels.size
-                                        val barWidth = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1f)
-                                        spectrumLevels.forEachIndexed { index, level ->
-                                            val barHeight = (size.height * level.coerceIn(0.04f, 1f)).coerceAtLeast(3.dp.toPx())
-                                            drawRoundRect(
-                                                brush = Brush.verticalGradient(listOf(Color(0xFF77E6D1), Color(0xFF9A7BFF), Color(0xFF463A80))),
-                                                topLeft = Offset(index * (barWidth + gap), size.height - barHeight),
-                                                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
-                                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
-                                            )
-                                        }
+                                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(66.dp)) {
+                                    val gap = 4.dp.toPx()
+                                    val count = spectrumLevels.size
+                                    val barWidth = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1f)
+                                    spectrumLevels.forEachIndexed { index, level ->
+                                        val barHeight = (size.height * level.coerceIn(0.04f, 1f)).coerceAtLeast(3.dp.toPx())
+                                        drawRoundRect(
+                                            brush = Brush.verticalGradient(listOf(Color(0xFF77E6D1), Color(0xFF9A7BFF), Color(0xFF463A80))),
+                                            topLeft = Offset(index * (barWidth + gap), size.height - barHeight),
+                                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+                                        )
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(spectrumStatus, color = Color.LightGray, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                    if (!spectrumEnabled || !hasAudioPermission) {
+                                        TextButton(onClick = {
+                                            if (!hasAudioPermission) audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                            else {
+                                                spectrumEnabled = true
+                                                spectrumStatus = if (isPlaying) "Mengaktifkan spectrum..." else "Siap. Putar lagu untuk menampilkan sinyal audio."
+                                            }
+                                        }) { Text(if (!hasAudioPermission) "Izinkan & Aktifkan" else "Aktifkan") }
+                                    } else {
+                                        TextButton(onClick = { spectrumEnabled = false; spectrumStatus = "Spectrum analyzer dimatikan." }) { Text("Matikan") }
                                     }
                                 }
                             }
@@ -1410,21 +1440,39 @@ fun MusicAiScreen() {
                                 Text("12-BAND • GESER HORIZONTAL", color = Color(0xFFE2D7FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 Text("12 kontrol horizontal • rentang ±12 dB. Nilai dipetakan ke band hardware secara interpolasi.", color = Color.LightGray, fontSize = 11.sp)
                                 val labels = listOf("31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "10 kHz", "12 kHz", "16 kHz")
-                                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                                     labels.forEachIndexed { index, label ->
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text(label, color = Color.White, fontSize = 11.sp, modifier = Modifier.width(54.dp))
-                                            Slider(
-                                                value = equalizerLevels[index],
-                                                onValueChange = { value ->
-                                                    equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
-                                                    if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
-                                                },
-                                                valueRange = -12f..12f,
-                                                enabled = equalizerEnabled,
-                                                modifier = Modifier.weight(1f).height(42.dp)
-                                            )
-                                            Text(if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(), color = Color(0xFFD9CCFF), fontSize = 11.sp, modifier = Modifier.width(28.dp))
+                                        Surface(
+                                            color = Color(0x553E4C70),
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.width(190.dp)
+                                        ) {
+                                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                                    Text(
+                                                        if (equalizerLevels[index] > 0f) "+${equalizerLevels[index].toInt()}" else equalizerLevels[index].toInt().toString(),
+                                                        color = Color(0xFFD9CCFF), fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                                Slider(
+                                                    value = equalizerLevels[index],
+                                                    onValueChange = { value ->
+                                                        equalizerLevels = equalizerLevels.toMutableList().also { it[index] = value }
+                                                        if (equalizerEnabled) runCatching { equalizer?.let { eq -> applyEqualizerSettings(eq) } }
+                                                    },
+                                                    valueRange = -12f..12f,
+                                                    enabled = equalizerEnabled,
+                                                    modifier = Modifier.fillMaxWidth().height(34.dp)
+                                                )
+                                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                    Text("-12 dB", color = Color.Gray, fontSize = 9.sp)
+                                                    Text("+12 dB", color = Color.Gray, fontSize = 9.sp)
+                                                }
+                                            }
                                         }
                                     }
                                 }
