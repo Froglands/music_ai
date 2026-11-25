@@ -249,15 +249,27 @@ fun MusicAiScreen() {
                     ?: throw IllegalStateException("File tidak bisa dibaca.")
                 if (bytes.isEmpty()) throw IllegalStateException("File audio kosong.")
                 val mime = context.contentResolver.getType(uri) ?: "audio/mpeg"
-                val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Flow Music"
-                var importedTitle = name.substringBeforeLast('.', name).ifBlank { "Lagu lokal" }
+                // OpenDocument URI segments may be numeric MediaStore IDs, not filenames.
+                val documentName = runCatching {
+                    context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(cursor.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null
+                    }
+                }.getOrNull()?.takeIf { it.isNotBlank() }
+                val name = documentName
+                    ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.takeIf { it.contains('.') && !it.all(Char::isDigit) }
+                    ?: "Lagu lokal"
+                val filenameTitle = name.substringAfterLast('/').substringBeforeLast('.', name).trim()
+                    .takeIf { it.isNotBlank() && !it.all(Char::isDigit) }
+                var importedTitle = filenameTitle ?: "Lagu lokal"
                 var importedArtist: String? = null
                 var importedDuration: Float? = null
                 var coverName: String? = null
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, uri)
-                    importedTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() } ?: importedTitle
+                    val embeddedTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                        ?.trim()?.takeIf { it.isNotBlank() && !it.all(Char::isDigit) }
+                    if (embeddedTitle != null) importedTitle = embeddedTitle
                     importedArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
                         ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
                     importedDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toFloatOrNull()?.div(1000f)
